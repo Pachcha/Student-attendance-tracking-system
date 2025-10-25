@@ -217,6 +217,23 @@
             saveData();
         };
 
+        const handleSaveTemperature = (studentId) => {
+            const input = document.getElementById(`temp_input_${studentId}`);
+            if (!input) return;
+            const value = input.value;
+            if (!value) {
+                showToast('กรุณากรอกอุณหภูมิ', 'error');
+                return;
+            }
+            const temp = parseFloat(value);
+            if (temp < 35 || temp > 42) {
+                showToast('อุณหภูมิต้องอยู่ระหว่าง 35-42°C', 'error');
+                return;
+            }
+            updateHealth(studentId, 'temperature', value);
+            showToast('บันทึกอุณหภูมิสำเร็จ');
+        };
+
         const exportToCSV = () => {
             const filtered = getFilteredStudents();
             let csv = 'รหัส,ชื่อ-สกุล,วันที่,เช้า-รับ,เช้า-ส่ง,เย็น-รับ,เย็น-ส่ง\n';
@@ -469,7 +486,10 @@
                 <div class="space-y-6">
                     <div class="flex justify-between items-center">
                         <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">เช็คชื่อ</h2>
-                        ${app.currentUser?.role === 'admin' ? `<button onclick="app.showModals.addStudent = true; render();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">+ เพิ่มนักเรียน</button>` : ''}
+                        <div class="flex gap-2">
+                            ${app.currentUser?.role === 'admin' ? `<button onclick="app.showModals.addStudent = true; render();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">+ เพิ่มนักเรียน</button>` : ''}
+                            <button onclick="saveData(); showToast('บันทึกข้อมูลทั้งหมดสำเร็จ'); render();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">💾 บันทึก</button>
+                        </div>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
@@ -492,6 +512,7 @@
                                         <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
                                         <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
                                         <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
+                                        <th class="px-3 py-3 text-center font-semibold bg-red-500 text-white">🌡️ อุณหภูมิ</th>
                                         ${app.currentUser?.role === 'admin' ? '<th class="px-3 py-3 text-center">จัดการ</th>' : ''}
                                     </tr>
                                     <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
@@ -500,6 +521,7 @@
                                         <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
                                         <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
                                         <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
+                                        <th class="px-3 py-2 text-center text-xs">°C / บันทึก</th>
                                         ${app.currentUser?.role === 'admin' ? '<th></th>' : ''}
                                     </tr>
                                 </thead>
@@ -507,6 +529,8 @@
                                     ${filtered.map(s => {
                                         const morning = app.attendance[s.id]?.morning || {};
                                         const evening = app.attendance[s.id]?.evening || {};
+                                        const health = app.healthData[s.id] || {};
+                                        const tempError = health.temperature && (parseFloat(health.temperature) < 35 || parseFloat(health.temperature) > 42);
                                         return `
                                             <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
                                                 <td class="px-3 py-3">${s.code}</td>
@@ -522,6 +546,13 @@
                                                 </td>
                                                 <td class="px-3 py-3 text-center">
                                                     <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'sent', this.checked); render();" class="w-5 h-5 cursor-pointer" />
+                                                </td>
+                                                <td class="px-3 py-3">
+                                                    <div class="flex gap-1 items-center justify-center">
+                                                        <input type="number" id="temp_input_${s.id}" step="0.1" value="${health.temperature || ''}" placeholder="36.5" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : ''} ${tempError ? 'border-red-500' : 'border-gray-300'} w-16 px-2 py-1 text-xs border rounded" />
+                                                        <button onclick="handleSaveTemperature(${s.id}); render();" class="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 font-medium whitespace-nowrap">บันทึก</button>
+                                                    </div>
+                                                    ${tempError ? '<span class="text-red-500 text-xs block">35-42°C</span>' : ''}
                                                 </td>
                                                 ${app.currentUser?.role === 'admin' ? `<td class="px-3 py-3"><button onclick="handleDeleteStudent(${s.id}); render();" class="px-3 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">ลบ</button></td>` : ''}
                                             </tr>
@@ -540,7 +571,10 @@
             const filtered = getFilteredStudents();
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">💊 บันทึกการรับประทานยา</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">💊 บันทึกการรับประทานยา</h2>
+                        <button onclick="saveData(); showToast('บันทึกข้อมูลทั้งหมดสำเร็จ'); render();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">💾 บันทึก</button>
+                    </div>
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full mb-4 px-4 py-2 border rounded-lg" />
                         <div class="overflow-x-auto">
@@ -582,7 +616,10 @@
             const filtered = getFilteredStudents();
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">🌡️ บันทึกสุขภาพ</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">🌡️ บันทึกสุขภาพ</h2>
+                        <button onclick="saveData(); showToast('บันทึกข้อมูลทั้งหมดสำเร็จ'); render();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">💾 บันทึก</button>
+                    </div>
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full mb-4 px-4 py-2 border rounded-lg" />
                         <div class="overflow-x-auto">
@@ -669,7 +706,10 @@
             const isDark = app.darkMode;
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">⚙️ ตั้งค่าระบบ</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">⚙️ ตั้งค่าระบบ</h2>
+                        <button onclick="saveData(); showToast('บันทึกการตั้งค่าสำเร็จ'); render();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">💾 บันทึก</button>
+                    </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">ตั้งค่าระบบ</h3>
