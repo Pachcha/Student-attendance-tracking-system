@@ -186,12 +186,14 @@
             app.attendance[studentId][session].date = app.selectedDate;
             app.attendance[studentId][session].timestamp = new Date().toISOString();
             saveData();
+            render(); // อัปเดตหน้าจอแบบ real-time
         };
 
         const updateMedication = (studentId, med, taken) => {
             if (!app.medications[studentId]) app.medications[studentId] = {};
             app.medications[studentId][med] = { taken, date: app.selectedDate, time: new Date().toLocaleTimeString('th-TH') };
             saveData();
+            render(); // อัปเดตหน้าจอแบบ real-time
         };
 
         const updateHealth = (studentId, field, value) => {
@@ -200,6 +202,7 @@
             app.healthData[studentId].date = app.selectedDate;
             app.healthData[studentId].timestamp = new Date().toISOString();
             saveData();
+            render(); // อัปเดตหน้าจอแบบ real-time
         };
 
         const handleSaveTemperature = (studentId) => {
@@ -511,58 +514,111 @@
 
         const renderHealthCheckPage = () => {
             const isDark = app.darkMode;
-            const filtered = getFilteredStudents();
+            const dormList = app.dormitories.filter(d => d !== 'ทั้งหมด');
+            
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">🌡️ บันทึกสุขภาพ</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">📝 บันทึกสุขภาพ</h2>
+                        <button onclick="saveData(); showToast('บันทึกข้อมูลทั้งหมดสำเร็จ'); render();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">💾 บันทึกทั้งหมด</button>
+                    </div>
+                    
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full mb-4 px-4 py-2 border rounded-lg" />
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-red-100'} border-b-2">
-                                        <th class="px-4 py-3 text-left font-semibold">รหัส</th>
-                                        <th class="px-4 py-3 text-left font-semibold">ชื่อ-สกุล</th>
-                                        <th class="px-4 py-3 text-left font-semibold">อุณหภูมิ (°C)</th>
-                                        <th class="px-4 py-3 text-left font-semibold">น้ำหนัก (kg)</th>
-                                        <th class="px-4 py-3 text-left font-semibold">หมายเหตุ</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
-                                    ${filtered.map(s => {
-                                        const health = app.healthData[s.id] || {};
-                                        const tempError = health.temperature && (parseFloat(health.temperature) < 35 || parseFloat(health.temperature) > 42);
-                                        const weightError = health.weight && (parseFloat(health.weight) < 20 || parseFloat(health.weight) > 200);
-                                        return `
-                                            <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
-                                                <td class="px-4 py-3">${s.code}</td>
-                                                <td class="px-4 py-3 font-medium">${s.name}</td>
-                                                <td class="px-4 py-3">
-                                                    <input type="number" step="0.1" value="${health.temperature || ''}" onchange="updateHealth(${s.id}, 'temperature', this.value); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : ''} ${tempError ? 'border-red-500' : 'border-gray-300'} w-24 px-3 py-2 border rounded-lg" placeholder="36.5" />
-                                                    ${tempError ? '<span class="text-red-500 text-xs">35-42°C</span>' : ''}
-                                                </td>
-                                                <td class="px-4 py-3">
-                                                    <input type="number" step="0.1" value="${health.weight || ''}" onchange="updateHealth(${s.id}, 'weight', this.value); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : ''} ${weightError ? 'border-red-500' : 'border-gray-300'} w-24 px-3 py-2 border rounded-lg" placeholder="50" />
-                                                    ${weightError ? '<span class="text-red-500 text-xs">20-200 kg</span>' : ''}
-                                                </td>
-                                                <td class="px-4 py-3">
-                                                    <input type="text" value="${health.notes || ''}" onchange="updateHealth(${s.id}, 'notes', this.value); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-3 py-2 border rounded-lg" placeholder="หมายเหตุ" />
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
+                        <div class="mb-4">
+                            <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">เลือกวันที่</label>
+                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
                         </div>
                     </div>
+
+                    <!-- แบ่งตามหอนอน -->
+                    ${dormList.map((dorm, index) => {
+                        const dormStudents = app.students.filter(s => s.dorm === dorm);
+                        const dormHealth = app.healthData[dorm] || {};
+                        return `
+                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+                                <div class="flex justify-between items-start mb-4">
+                                    <h3 class="${isDark ? 'text-white' : 'text-gray-900'} font-bold text-lg">
+                                        🏘️ ${dorm} (${dormStudents.length} คน)
+                                    </h3>
+                                    <button onclick="app.dormHealthData = app.dormHealthData || {}; app.dormHealthData['${dorm}'] = (app.healthData['${dorm}'] = app.healthData['${dorm}'] || {}); app.healthData['${dorm}'].notes = document.getElementById('health_textarea_${index}').value; app.healthData['${dorm}'].timestamp = new Date().toISOString(); saveData(); showToast('บันทึกข้อมูลของ ${dorm} สำเร็จ'); render();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                        ✓ บันทึก
+                                    </button>
+                                </div>
+                                <textarea 
+                                    id="health_textarea_${index}"
+                                    placeholder="บันทึกสุขภาพของหอนอน เช่น สถานะสุขภาพ การจ่ายยา พฤติกรรม แนวทางพัฒนา ฯลฯ"
+                                    value="${dormHealth.notes || ''}"
+                                    class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300 bg-white'} w-full px-4 py-3 border rounded-lg h-28 focus:ring-2 focus:ring-blue-500"
+                                ></textarea>
+                                <p class="${isDark ? 'text-gray-400' : 'text-gray-500'} text-xs mt-2">
+                                    อัปเดตเมื่อ: ${dormHealth.timestamp ? new Date(dormHealth.timestamp).toLocaleString('th-TH') : 'ยังไม่มีข้อมูล'}
+                                </p>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             `;
+        };
+
+        const getDailyStatsByDorm = () => {
+            const stats = {};
+            const date = app.selectedDate;
+            
+            app.dormitories.filter(d => d !== 'ทั้งหมด').forEach(dorm => {
+                stats[dorm] = {
+                    present: 0,        // มา (ติก เช้า-รับ)
+                    returned: 0,       // กลับบ้าน (ติก เย็น-ส่ง)
+                    leftInDorm: 0,     // อยู่ที่หอ (ติก เช้า-รับ แต่ไม่ติก เย็น-ส่ง)
+                    absent: 0,         // ไม่มา (ไม่ติก เช้า-รับ)
+                    lateReturn: 0,     // ไม่กลับทัน (ติก เย็น-รับ แต่ไม่ติก เย็น-ส่ง)
+                    total: 0
+                };
+            });
+            
+            app.students.forEach(student => {
+                const morning = app.attendance[student.id]?.morning || {};
+                const evening = app.attendance[student.id]?.evening || {};
+                const dorm = student.dorm;
+                
+                if (!stats[dorm]) {
+                    stats[dorm] = {
+                        present: 0,
+                        returned: 0,
+                        leftInDorm: 0,
+                        absent: 0,
+                        lateReturn: 0,
+                        total: 0
+                    };
+                }
+                
+                // นับทั้งหมด
+                stats[dorm].total++;
+                
+                // ติก เช้า-รับ = มา (present)
+                if (morning.received) {
+                    stats[dorm].present++;
+                    
+                    // ติก เย็น-ส่ง = กลับบ้าน (returned)
+                    if (evening.sent) {
+                        stats[dorm].returned++;
+                    } else {
+                        // ไม่ติก เย็น-ส่ง = อยู่ที่หอ (leftInDorm)
+                        stats[dorm].leftInDorm++;
+                    }
+                } else {
+                    // ไม่ติก เช้า-รับ = ไม่มา (absent)
+                    stats[dorm].absent++;
+                }
+            });
+            
+            return stats;
         };
 
         const renderStatisticsPage = () => {
             const isDark = app.darkMode;
             const dailyStats = getDailyStats();
             const dormStats = getDormStats();
+            const dormDailyStats = getDailyStatsByDorm();
             const morningPercent = dailyStats.total > 0 ? Math.round((dailyStats.morningReceived / dailyStats.total) * 100) : 0;
             const eveningPercent = dailyStats.total > 0 ? Math.round((dailyStats.eveningReceived / dailyStats.total) * 100) : 0;
 
@@ -575,52 +631,57 @@
                         <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-6 text-white shadow-lg">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-amber-100 text-sm">เช้า - รับ</p>
-                                    <p class="text-3xl font-bold mt-2">${dailyStats.morningReceived}</p>
-                                    <p class="text-amber-200 text-xs mt-1">${morningPercent}% (${dailyStats.total})</p>
+                    <!-- สรุปรวมทั้งหมด -->
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-purple-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">📈 สรุปรวมทั้งหมด</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-6 text-white shadow-lg">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-amber-100 text-sm">เช้า - รับ</p>
+                                        <p class="text-3xl font-bold mt-2">${dailyStats.morningReceived}</p>
+                                        <p class="text-amber-200 text-xs mt-1">${morningPercent}% (${dailyStats.total})</p>
+                                    </div>
+                                    <div class="text-5xl opacity-30">📥</div>
                                 </div>
-                                <div class="text-5xl opacity-30">📥</div>
                             </div>
-                        </div>
 
-                        <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-orange-100 text-sm">เช้า - ส่ง</p>
-                                    <p class="text-3xl font-bold mt-2">${dailyStats.morningSent}</p>
-                                    <p class="text-orange-200 text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.morningSent / dailyStats.total) * 100) : 0}%</p>
+                            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-orange-100 text-sm">เช้า - ส่ง</p>
+                                        <p class="text-3xl font-bold mt-2">${dailyStats.morningSent}</p>
+                                        <p class="text-orange-200 text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.morningSent / dailyStats.total) * 100) : 0}%</p>
+                                    </div>
+                                    <div class="text-5xl opacity-30">📤</div>
                                 </div>
-                                <div class="text-5xl opacity-30">📤</div>
                             </div>
-                        </div>
 
-                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-blue-100 text-sm">เย็น - รับ</p>
-                                    <p class="text-3xl font-bold mt-2">${dailyStats.eveningReceived}</p>
-                                    <p class="text-blue-200 text-xs mt-1">${eveningPercent}%</p>
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-blue-100 text-sm">เย็น - รับ</p>
+                                        <p class="text-3xl font-bold mt-2">${dailyStats.eveningReceived}</p>
+                                        <p class="text-blue-200 text-xs mt-1">${eveningPercent}%</p>
+                                    </div>
+                                    <div class="text-5xl opacity-30">📥</div>
                                 </div>
-                                <div class="text-5xl opacity-30">📥</div>
                             </div>
-                        </div>
 
-                        <div class="bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl p-6 text-white shadow-lg">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-cyan-100 text-sm">เย็น - ส่ง</p>
-                                    <p class="text-3xl font-bold mt-2">${dailyStats.eveningSent}</p>
-                                    <p class="text-cyan-200 text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.eveningSent / dailyStats.total) * 100) : 0}%</p>
+                            <div class="bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl p-6 text-white shadow-lg">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-cyan-100 text-sm">เย็น - ส่ง</p>
+                                        <p class="text-3xl font-bold mt-2">${dailyStats.eveningSent}</p>
+                                        <p class="text-cyan-200 text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.eveningSent / dailyStats.total) * 100) : 0}%</p>
+                                    </div>
+                                    <div class="text-5xl opacity-30">📤</div>
                                 </div>
-                                <div class="text-5xl opacity-30">📤</div>
                             </div>
                         </div>
                     </div>
 
+                    <!-- จำนวนนักเรียนแต่ละหอนอน -->
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">👥 จำนวนนักเรียนแต่ละหอนอน</h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -629,7 +690,7 @@
                                     <div class="flex items-center justify-between">
                                         <div>
                                             <p class="${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm">${dorm}</p>
-                                            <p class="${isDark ? 'text-white' : 'text-gray-900'} text-2xl font-bold mt-1">${count}</p>
+                                            <p class="${isDark ? 'text-white' : 'text-gray-900'} text-2xl font-bold mt-1">${count} คน</p>
                                         </div>
                                         <div class="${isDark ? 'bg-gray-600' : 'bg-blue-200'} rounded-full w-12 h-12 flex items-center justify-center text-2xl">
                                             👤
@@ -641,6 +702,46 @@
                         <div class="${isDark ? 'bg-gray-700' : 'bg-purple-100'} rounded-lg p-4 mt-4 border-l-4 border-purple-500">
                             <p class="${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm">รวมทั้งหมด</p>
                             <p class="${isDark ? 'text-white' : 'text-gray-900'} text-3xl font-bold mt-1">${app.students.length} คน</p>
+                        </div>
+                    </div>
+
+                    <!-- สรุปแยกเป็นเรือนนอน -->
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-green-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">🏘️ สรุปแยกเป็นเรือนนอน (วันที่ ${formatThaiDate(app.selectedDate)})</h3>
+                        <div class="space-y-4">
+                            ${Object.entries(dormDailyStats).map(([dorm, stats]) => {
+                                return `
+                                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-green-50 to-green-100'} rounded-lg p-4 border-l-4 border-green-500">
+                                        <p class="${isDark ? 'text-white' : 'text-gray-900'} font-bold mb-3">${dorm} (รวม ${stats.total} คน)</p>
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                            <div class="${isDark ? 'bg-green-600' : 'bg-green-200'} rounded p-3 border-l-4 border-green-700">
+                                                <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs font-semibold">✓ มา (เช้า)</p>
+                                                <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs mb-1">รับ✓ส่ง</p>
+                                                <p class="${isDark ? 'text-white' : 'text-green-900'} text-2xl font-bold">${stats.morningFull}</p>
+                                                <p class="${isDark ? 'text-green-200' : 'text-green-600'} text-xs">${stats.total > 0 ? Math.round((stats.morningFull / stats.total) * 100) : 0}%</p>
+                                            </div>
+                                            <div class="${isDark ? 'bg-green-600' : 'bg-green-200'} rounded p-3 border-l-4 border-green-700">
+                                                <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs font-semibold">✓ มา (เย็น)</p>
+                                                <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs mb-1">รับ✓ส่ง</p>
+                                                <p class="${isDark ? 'text-white' : 'text-green-900'} text-2xl font-bold">${stats.eveningFull}</p>
+                                                <p class="${isDark ? 'text-green-200' : 'text-green-600'} text-xs">${stats.total > 0 ? Math.round((stats.eveningFull / stats.total) * 100) : 0}%</p>
+                                            </div>
+                                            <div class="${isDark ? 'bg-green-700' : 'bg-green-300'} rounded p-3 border-l-4 border-green-800">
+                                                <p class="${isDark ? 'text-green-100' : 'text-green-800'} text-xs font-semibold">✓ มา</p>
+                                                <p class="${isDark ? 'text-green-100' : 'text-green-800'} text-xs mb-1">เช้า-เย็น ✓✓</p>
+                                                <p class="${isDark ? 'text-white' : 'text-green-900'} text-2xl font-bold">${stats.fullDay}</p>
+                                                <p class="${isDark ? 'text-green-200' : 'text-green-700'} text-xs">${stats.total > 0 ? Math.round((stats.fullDay / stats.total) * 100) : 0}%</p>
+                                            </div>
+                                            <div class="${isDark ? 'bg-red-600' : 'bg-red-200'} rounded p-3 border-l-4 border-red-700">
+                                                <p class="${isDark ? 'text-red-100' : 'text-red-700'} text-xs font-semibold">✕ ไม่มา</p>
+                                                <p class="${isDark ? 'text-red-100' : 'text-red-700'} text-xs mb-1">ทั้งเช้า-เย็น</p>
+                                                <p class="${isDark ? 'text-white' : 'text-red-900'} text-2xl font-bold">${stats.absent}</p>
+                                                <p class="${isDark ? 'text-red-200' : 'text-red-600'} text-xs">${stats.total > 0 ? Math.round((stats.absent / stats.total) * 100) : 0}%</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
                     </div>
                 </div>
