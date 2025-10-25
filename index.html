@@ -48,6 +48,16 @@
             ],
             
             attendance: JSON.parse(localStorage.getItem('dorm_attendance')) || {},
+            
+            // Remove updateAttendance with status - now only use received/sent
+            updateAttendanceOld: function(studentId, session, field, value) {
+                if (!app.attendance[studentId]) app.attendance[studentId] = {};
+                if (!app.attendance[studentId][session]) app.attendance[studentId][session] = {};
+                app.attendance[studentId][session][field] = value;
+                app.attendance[studentId][session].date = app.selectedDate;
+                app.attendance[studentId][session].timestamp = new Date().toISOString();
+                saveData();
+            },
             medications: JSON.parse(localStorage.getItem('dorm_medications')) || {},
             healthData: JSON.parse(localStorage.getItem('dorm_health')) || {},
             
@@ -209,11 +219,11 @@
 
         const exportToCSV = () => {
             const filtered = getFilteredStudents();
-            let csv = 'รหัส,ชื่อ-สกุล,วันที่,เช้า-สถานะ,เช้า-รับ,เช้า-ส่ง,เย็น-สถานะ,เย็น-รับ,เย็น-ส่ง\n';
+            let csv = 'รหัส,ชื่อ-สกุล,วันที่,เช้า-รับ,เช้า-ส่ง,เย็น-รับ,เย็น-ส่ง\n';
             filtered.forEach(s => {
                 const morning = app.attendance[s.id]?.morning || {};
                 const evening = app.attendance[s.id]?.evening || {};
-                csv += `${s.code},${s.name},${app.selectedDate},${morning.status || '-'},${morning.received ? 'ใช่' : '-'},${morning.sent ? 'ใช่' : '-'},${evening.status || '-'},${evening.received ? 'ใช่' : '-'},${evening.sent ? 'ใช่' : '-'}\n`;
+                csv += `${s.code},${s.name},${app.selectedDate},${morning.received ? 'ใช่' : '-'},${morning.sent ? 'ใช่' : '-'},${evening.received ? 'ใช่' : '-'},${evening.sent ? 'ใช่' : '-'}\n`;
             });
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
@@ -240,19 +250,18 @@
         const getMonthlyStats = () => {
             const currentMonth = new Date().getMonth();
             const currentYear = new Date().getFullYear();
-            let presentCount = 0, sentCount = 0, absentCount = 0;
+            let receivedCount = 0, sentCount = 0;
             Object.keys(app.attendance).forEach(studentId => {
                 Object.keys(app.attendance[studentId] || {}).forEach(session => {
                     const record = app.attendance[studentId][session];
                     const recordDate = new Date(record.date);
                     if (recordDate.getMonth() === currentMonth && recordDate.getFullYear() === currentYear) {
-                        if (record.status === 'present') presentCount++;
-                        else if (record.status === 'sent') sentCount++;
-                        else if (record.status === 'absent') absentCount++;
+                        if (record.received) receivedCount++;
+                        if (record.sent) sentCount++;
                     }
                 });
             });
-            return { presentCount, sentCount, absentCount };
+            return { receivedCount, sentCount };
         };
 
         const formatThaiDate = (dateStr) => {
@@ -481,16 +490,14 @@
                                     <tr class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} border-b-2">
                                         <th class="px-3 py-3 text-left font-semibold">รหัส</th>
                                         <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
-                                        <th colspan="3" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
-                                        <th colspan="3" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
+                                        <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
+                                        <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
                                         ${app.currentUser?.role === 'admin' ? '<th class="px-3 py-3 text-center">จัดการ</th>' : ''}
                                     </tr>
                                     <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
                                         <th colspan="2"></th>
-                                        <th class="px-3 py-2 text-center text-xs">สถานะ</th>
                                         <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
                                         <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
-                                        <th class="px-3 py-2 text-center text-xs">สถานะ</th>
                                         <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
                                         <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
                                         ${app.currentUser?.role === 'admin' ? '<th></th>' : ''}
@@ -504,27 +511,11 @@
                                             <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
                                                 <td class="px-3 py-3">${s.code}</td>
                                                 <td class="px-3 py-3 font-medium">${s.name}</td>
-                                                <td class="px-3 py-3">
-                                                    <select onchange="updateAttendance(${s.id}, 'morning', 'status', this.value); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-20 px-2 py-1 text-xs border rounded">
-                                                        <option value="">-</option>
-                                                        <option ${morning.status === 'present' ? 'selected' : ''}>เข้า</option>
-                                                        <option ${morning.status === 'sent' ? 'selected' : ''}>ส่ง</option>
-                                                        <option ${morning.status === 'absent' ? 'selected' : ''}>ถอน</option>
-                                                    </select>
-                                                </td>
                                                 <td class="px-3 py-3 text-center">
                                                     <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'received', this.checked); render();" class="w-5 h-5 cursor-pointer" />
                                                 </td>
                                                 <td class="px-3 py-3 text-center">
                                                     <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'sent', this.checked); render();" class="w-5 h-5 cursor-pointer" />
-                                                </td>
-                                                <td class="px-3 py-3">
-                                                    <select onchange="updateAttendance(${s.id}, 'evening', 'status', this.value); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-20 px-2 py-1 text-xs border rounded">
-                                                        <option value="">-</option>
-                                                        <option ${evening.status === 'present' ? 'selected' : ''}>เข้า</option>
-                                                        <option ${evening.status === 'sent' ? 'selected' : ''}>ส่ง</option>
-                                                        <option ${evening.status === 'absent' ? 'selected' : ''}>ถอน</option>
-                                                    </select>
                                                 </td>
                                                 <td class="px-3 py-3 text-center">
                                                     <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'received', this.checked); render();" class="w-5 h-5 cursor-pointer" />
@@ -642,32 +633,23 @@
             return `
                 <div class="space-y-6">
                     <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">📊 สถิติรายเดือน</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white shadow-lg">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-green-100 text-sm">เข้านอน</p>
-                                    <p class="text-4xl font-bold mt-2">${stats.presentCount}</p>
+                                    <p class="text-green-100 text-sm">รับเช้า-เย็น</p>
+                                    <p class="text-4xl font-bold mt-2">${stats.receivedCount}</p>
                                 </div>
                                 <div class="text-5xl">✓</div>
                             </div>
                         </div>
-                        <div class="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-6 text-white shadow-lg">
+                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-yellow-100 text-sm">ส่ง/ถอนชื่อ</p>
+                                    <p class="text-blue-100 text-sm">ส่งเช้า-เย็น</p>
                                     <p class="text-4xl font-bold mt-2">${stats.sentCount}</p>
                                 </div>
-                                <div class="text-5xl">⏱️</div>
-                            </div>
-                        </div>
-                        <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-xl p-6 text-white shadow-lg">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-red-100 text-sm">ขาดนอน</p>
-                                    <p class="text-4xl font-bold mt-2">${stats.absentCount}</p>
-                                </div>
-                                <div class="text-5xl">✕</div>
+                                <div class="text-5xl">📤</div>
                             </div>
                         </div>
                     </div>
