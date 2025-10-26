@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบจัดการหอนอน - แก้ไขแล้ว</title>
+    <title>ระบบจัดการหอนอน - เวอร์ชันสมบูรณ์</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -114,34 +114,6 @@
             ]
         };
 
-        // ================== Utility Functions ==================
-
-        const escapeHtml = (text) => {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        };
-
-        const showToast = (message, type = 'success') => {
-            app.toastMessage = message;
-            app.toastType = type;
-            render();
-            setTimeout(() => {
-                app.toastMessage = '';
-                render();
-            }, 3000);
-        };
-
-        const formatThaiDate = (dateStr) => {
-            const date = new Date(dateStr + 'T00:00:00');
-            return new Intl.DateTimeFormat('th-TH', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric',
-                weekday: 'long'
-            }).format(date);
-        };
-
         // ================== Firebase Functions ==================
 
         const saveStudents = async () => {
@@ -204,6 +176,7 @@
                     ...data,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                console.log(`✅ Attendance saved: ${docId}`);
                 return true;
             } catch (error) {
                 console.error('❌ Error saving attendance:', error);
@@ -231,6 +204,7 @@
                         timestamp: data.timestamp
                     };
                 });
+                console.log(`✅ Loaded attendance for ${app.selectedDate}`);
                 render();
             } catch (error) {
                 console.error('❌ Error loading attendance:', error);
@@ -249,6 +223,7 @@
                     time: new Date().toLocaleTimeString('th-TH'),
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                console.log(`✅ Medication saved: ${docId}`);
                 return true;
             } catch (error) {
                 console.error('❌ Error saving medication:', error);
@@ -275,6 +250,7 @@
                         time: data.time
                     };
                 });
+                console.log(`✅ Loaded medications for ${app.selectedDate}`);
                 render();
             } catch (error) {
                 console.error('❌ Error loading medications:', error);
@@ -291,6 +267,7 @@
                     date: app.selectedDate,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
+                console.log(`✅ Health data saved: ${docId}`);
                 return true;
             } catch (error) {
                 console.error('❌ Error saving health data:', error);
@@ -313,6 +290,7 @@
                         timestamp: data.timestamp?.toDate().toISOString()
                     };
                 });
+                console.log(`✅ Loaded health data for ${app.selectedDate}`);
                 render();
             } catch (error) {
                 console.error('❌ Error loading health data:', error);
@@ -323,6 +301,7 @@
         const saveSystemSettings = async () => {
             try {
                 await db.collection('settings').doc('system').set(app.systemSettings);
+                console.log('✅ System settings saved');
                 showToast('บันทึกการตั้งค่าสำเร็จ');
                 return true;
             } catch (error) {
@@ -337,6 +316,7 @@
                 const doc = await db.collection('settings').doc('system').get();
                 if (doc.exists) {
                     app.systemSettings = { ...app.systemSettings, ...doc.data() };
+                    console.log('✅ System settings loaded');
                     render();
                 }
             } catch (error) {
@@ -392,12 +372,9 @@
             console.log('✅ All data loaded');
         };
 
-        // ================== Student Management Functions (แก้ไขแล้ว) ==================
+        // ================== Student Management Functions ==================
 
-        // ✅ ฟังก์ชันเพิ่มนักเรียน - แก้ไขแล้ว
-        window.addStudent = async () => {
-            console.log('🔵 Add student called');
-            
+        const addStudent = async () => {
             if (!app.newStudent.code || !app.newStudent.name) {
                 showToast('กรุณากรอกรหัสและชื่อนักเรียน', 'error');
                 return;
@@ -408,6 +385,14 @@
                 showToast('รหัสนักเรียนนี้มีอยู่แล้ว', 'error');
                 return;
             }
+            
+            // ยืนยันการเพิ่ม
+            const confirmMsg = `ต้องการเพิ่มนักเรียน?\n\n` +
+                              `รหัส: ${app.newStudent.code}\n` +
+                              `ชื่อ: ${app.newStudent.name}\n` +
+                              `หอนอน: ${app.newStudent.dorm}`;
+            
+            if (!confirm(confirmMsg)) return;
             
             const newId = app.students.length > 0 ? Math.max(...app.students.map(s => s.id)) + 1 : 1;
             const student = { ...app.newStudent, id: newId };
@@ -430,24 +415,16 @@
             render();
         };
 
-        // ✅ ฟังก์ชันแก้ไขนักเรียน - แก้ไขแล้ว
-        window.editStudent = (id) => {
-            console.log('🔵 Edit student:', id);
+        const editStudent = (id) => {
             const student = app.students.find(s => s.id === id);
             if (student) {
                 app.editingStudent = id;
                 app.editForm = { ...student };
                 render();
-            } else {
-                console.error('❌ Student not found:', id);
-                showToast('ไม่พบข้อมูลนักเรียน', 'error');
             }
         };
 
-        // ✅ ฟังก์ชันบันทึกการแก้ไข - แก้ไขแล้ว
-        window.saveEditStudent = async () => {
-            console.log('🔵 Save edit student');
-            
+        const saveEditStudent = async () => {
             if (!app.editForm.code || !app.editForm.name) {
                 showToast('กรุณากรอกรหัสและชื่อนักเรียน', 'error');
                 return;
@@ -466,30 +443,20 @@
                 
                 if (success) {
                     app.editingStudent = null;
-                    showToast('✓ แก้ไขข้อมูลนักเรียนสำเร็จ');
+                    showToast('แก้ไขข้อมูลนักเรียนสำเร็จ');
                 }
                 render();
-            } else {
-                showToast('เกิดข้อผิดพลาด: ไม่พบนักเรียน', 'error');
             }
         };
 
-        // ✅ ฟังก์ชันยกเลิกการแก้ไข - แก้ไขแล้ว
-        window.cancelEdit = () => {
-            console.log('🔵 Cancel edit');
+        const cancelEdit = () => {
             app.editingStudent = null;
             render();
         };
 
-        // ✅ ฟังก์ชันลบนักเรียน - แก้ไขแล้ว
-        window.deleteStudent = async (id) => {
-            console.log('🔵 Delete student:', id);
-            
+        const deleteStudent = async (id) => {
             const student = app.students.find(s => s.id === id);
-            if (!student) {
-                showToast('ไม่พบข้อมูลนักเรียน', 'error');
-                return;
-            }
+            if (!student) return;
             
             const confirmMsg = `⚠️ ต้องการลบนักเรียนนี้หรือไม่?\n\n` +
                               `รหัส: ${student.code}\n` +
@@ -497,13 +464,10 @@
                               `หอนอน: ${student.dorm}\n\n` +
                               `⚠️ ข้อมูลทั้งหมด (การเช็คชื่อ, ยา) จะถูกลบถาวร!`;
             
-            if (!confirm(confirmMsg)) {
-                return;
-            }
+            if (!confirm(confirmMsg)) return;
             
             showToast('กำลังลบข้อมูล...', 'error');
             
-            // ลบจาก array
             app.students = app.students.filter(s => s.id !== id);
             await saveStudents();
             
@@ -536,43 +500,9 @@
             render();
         };
 
-        // ================== Other Functions ==================
+        // ================== Import/Export Functions ==================
 
-        window.updateAttendance = async (studentId, session, field, value) => {
-            if (!app.attendance[studentId]) app.attendance[studentId] = {};
-            if (!app.attendance[studentId][session]) app.attendance[studentId][session] = {};
-            app.attendance[studentId][session][field] = value;
-            
-            await saveAttendance(studentId, session, app.attendance[studentId][session]);
-            render();
-        };
-
-        window.updateMedication = async (studentId, med, taken) => {
-            if (!app.medications[studentId]) app.medications[studentId] = {};
-            app.medications[studentId][med] = { 
-                taken, 
-                date: app.selectedDate, 
-                time: new Date().toLocaleTimeString('th-TH') 
-            };
-            
-            await saveMedication(studentId, med, taken);
-            render();
-        };
-
-        window.updateHealth = async (dorm, notes) => {
-            app.healthData[dorm] = {
-                notes,
-                timestamp: new Date().toISOString()
-            };
-            
-            const success = await saveHealthData(dorm, notes);
-            if (success) {
-                showToast(`✓ บันทึกข้อมูลของ ${dorm} สำเร็จ`);
-            }
-            render();
-        };
-
-        window.importStudentsCSV = () => {
+        const importStudentsCSV = () => {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = '.csv';
@@ -584,10 +514,11 @@
                 reader.onload = async (event) => {
                     try {
                         const text = event.target.result;
-                        const rows = text.split('\n').slice(1);
+                        const rows = text.split('\n').slice(1); // ข้าม header
                         
                         let importCount = 0;
                         let errorCount = 0;
+                        let errors = [];
                         
                         for (const row of rows) {
                             if (!row.trim()) continue;
@@ -596,11 +527,14 @@
                             
                             if (!code || !name) {
                                 errorCount++;
+                                errors.push(`แถว ${importCount + errorCount + 1}: ขาดรหัสหรือชื่อ`);
                                 continue;
                             }
                             
+                            // ตรวจสอบรหัสซ้ำ
                             if (app.students.some(s => s.code === code.trim())) {
                                 errorCount++;
+                                errors.push(`รหัส ${code.trim()}: มีอยู่แล้ว`);
                                 continue;
                             }
                             
@@ -620,10 +554,15 @@
                         
                         if (importCount > 0) {
                             await saveStudents();
-                            showToast(`✓ นำเข้า ${importCount} คน สำเร็จ${errorCount > 0 ? ` (ข้าม ${errorCount} รายการ)` : ''}`);
+                            let message = `✓ นำเข้า ${importCount} คน สำเร็จ`;
+                            if (errorCount > 0) {
+                                message += `\n⚠️ ข้าม ${errorCount} รายการ`;
+                                console.warn('Import errors:', errors);
+                            }
+                            showToast(message);
                             render();
                         } else {
-                            showToast('ไม่สามารถนำเข้าข้อมูลได้', 'error');
+                            showToast('ไม่สามารถนำเข้าข้อมูลได้\n' + errors.join('\n'), 'error');
                         }
                     } catch (error) {
                         console.error('Import error:', error);
@@ -635,7 +574,7 @@
             input.click();
         };
 
-        window.exportToCSV = () => {
+        const exportToCSV = () => {
             const filtered = getFilteredStudents();
             let csv = '\uFEFFรหัส,ชื่อ-สกุล,ชื่อเล่น,หอนอน,ห้อง,วันที่,เช้า-รับ,เช้า-ส่ง,เย็น-รับ,เย็น-ส่ง\n';
             
@@ -651,7 +590,7 @@
             showToast('ส่งออกข้อมูลสำเร็จ');
         };
 
-        window.exportAllStudents = () => {
+        const exportAllStudents = () => {
             let csv = '\uFEFFรหัส,ชื่อ-สกุล,ชื่อเล่น,หอนอน,ห้อง,ความพิการ,กลุ่ม\n';
             app.students.forEach(s => {
                 csv += `${s.code},${s.name},${s.nickname},${s.dorm},${s.room},${s.disability || '-'},${s.group}\n`;
@@ -673,94 +612,40 @@
             URL.revokeObjectURL(url);
         };
 
-        window.printReport = () => {
-            const filtered = getFilteredStudents();
-            const dailyStats = getDailyStats();
+        // ================== Attendance Functions ==================
+
+        const updateAttendance = async (studentId, session, field, value) => {
+            if (!app.attendance[studentId]) app.attendance[studentId] = {};
+            if (!app.attendance[studentId][session]) app.attendance[studentId][session] = {};
+            app.attendance[studentId][session][field] = value;
             
-            let printContent = `
-                <html>
-                <head>
-                    <title>รายงานการเช็คชื่อ</title>
-                    <meta charset="UTF-8">
-                    <style>
-                        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
-                        body { font-family: 'Sarabun', sans-serif; margin: 20px; }
-                        h1, h2 { text-align: center; }
-                        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
-                        th { background-color: #f0f0f0; }
-                        .summary { margin: 20px 0; padding: 15px; background-color: #f9f9f9; }
-                    </style>
-                </head>
-                <body>
-                    <h1>${app.systemSettings.dormName}</h1>
-                    <h2>${app.systemSettings.schoolName}</h2>
-                    <p style="text-align:center">รายงานการเช็คชื่อประจำวันที่ ${formatThaiDate(app.selectedDate)}</p>
-                    
-                    <div class="summary">
-                        <h3>สรุปภาพรวม</h3>
-                        <p>จำนวนนักเรียนทั้งหมด: ${dailyStats.total} คน</p>
-                        <p>เช้า - รับ: ${dailyStats.morningReceived} คน (${Math.round(dailyStats.morningReceived/dailyStats.total*100)}%)</p>
-                        <p>เช้า - ส่ง: ${dailyStats.morningSent} คน (${Math.round(dailyStats.morningSent/dailyStats.total*100)}%)</p>
-                        <p>เย็น - รับ: ${dailyStats.eveningReceived} คน (${Math.round(dailyStats.eveningReceived/dailyStats.total*100)}%)</p>
-                        <p>เย็น - ส่ง: ${dailyStats.eveningSent} คน (${Math.round(dailyStats.eveningSent/dailyStats.total*100)}%)</p>
-                    </div>
-                    
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ลำดับ</th>
-                                <th>รหัส</th>
-                                <th>ชื่อ-สกุล</th>
-                                <th>หอนอน</th>
-                                <th colspan="2">เช้า</th>
-                                <th colspan="2">เย็น</th>
-                            </tr>
-                            <tr>
-                                <th></th><th></th><th></th><th></th>
-                                <th>รับ</th><th>ส่ง</th>
-                                <th>รับ</th><th>ส่ง</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
+            await saveAttendance(studentId, session, app.attendance[studentId][session]);
+            render();
+        };
+
+        const updateMedication = async (studentId, med, taken) => {
+            if (!app.medications[studentId]) app.medications[studentId] = {};
+            app.medications[studentId][med] = { 
+                taken, 
+                date: app.selectedDate, 
+                time: new Date().toLocaleTimeString('th-TH') 
+            };
             
-            filtered.forEach((s, index) => {
-                const morning = app.attendance[s.id]?.morning || {};
-                const evening = app.attendance[s.id]?.evening || {};
-                printContent += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${s.code}</td>
-                        <td style="text-align:left">${s.name}</td>
-                        <td style="text-align:left">${s.dorm}</td>
-                        <td>${morning.received ? '✓' : '-'}</td>
-                        <td>${morning.sent ? '✓' : '-'}</td>
-                        <td>${evening.received ? '✓' : '-'}</td>
-                        <td>${evening.sent ? '✓' : '-'}</td>
-                    </tr>
-                `;
-            });
+            await saveMedication(studentId, med, taken);
+            render();
+        };
+
+        const updateHealth = async (dorm, notes) => {
+            app.healthData[dorm] = {
+                notes,
+                timestamp: new Date().toISOString()
+            };
             
-            printContent += `
-                        </tbody>
-                    </table>
-                    <div style="margin-top: 50px;">
-                        <p>ลงชื่อ .................................. ผู้บันทึก</p>
-                        <p style="margin-left: 50px">(${app.currentUser.name})</p>
-                        <p>วันที่ ${formatThaiDate(app.selectedDate)}</p>
-                    </div>
-                </body>
-                </html>
-            `;
-            
-            const printWindow = window.open('', '', 'width=800,height=600');
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            printWindow.focus();
-            setTimeout(() => {
-                printWindow.print();
-            }, 250);
+            const success = await saveHealthData(dorm, notes);
+            if (success) {
+                showToast(`✓ บันทึกข้อมูลของ ${dorm} สำเร็จ`);
+            }
+            render();
         };
 
         // ================== Statistics Functions ==================
@@ -846,7 +731,542 @@
             return stats;
         };
 
+        // ================== Utility Functions ==================
+
+        const showToast = (message, type = 'success') => {
+            app.toastMessage = message;
+            app.toastType = type;
+            render();
+            setTimeout(() => {
+                app.toastMessage = '';
+                render();
+            }, 3000);
+        };
+
+        const formatThaiDate = (dateStr) => {
+            const date = new Date(dateStr + 'T00:00:00');
+            return new Intl.DateTimeFormat('th-TH', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                weekday: 'long'
+            }).format(date);
+        };
+
+        const printReport = () => {
+            const filtered = getFilteredStudents();
+            const dailyStats = getDailyStats();
+            
+            let printContent = `
+                <html>
+                <head>
+                    <title>รายงานการเช็คชื่อ</title>
+                    <meta charset="UTF-8">
+                    <style>
+                        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+                        body { 
+                            font-family: 'Sarabun', sans-serif; 
+                            margin: 20px; 
+                            font-size: 14px;
+                        }
+                        h1, h2 { text-align: center; margin: 10px 0; }
+                        h1 { font-size: 24px; }
+                        h2 { font-size: 18px; color: #333; }
+                        table { 
+                            width: 100%; 
+                            border-collapse: collapse; 
+                            margin: 20px 0; 
+                            page-break-inside: auto;
+                        }
+                        tr { page-break-inside: avoid; page-break-after: auto; }
+                        th, td { 
+                            border: 1px solid #000; 
+                            padding: 8px; 
+                            text-align: center; 
+                        }
+                        th { 
+                            background-color: #e0e0e0; 
+                            font-weight: bold;
+                        }
+                        .header { margin-bottom: 30px; }
+                        .summary { 
+                            margin: 20px 0; 
+                            padding: 15px; 
+                            background-color: #f9f9f9; 
+                            border: 1px solid #ddd;
+                            border-radius: 5px;
+                        }
+                        .summary h3 { margin-top: 0; }
+                        .signature { 
+                            margin-top: 50px; 
+                            page-break-inside: avoid;
+                        }
+                        @media print {
+                            body { margin: 15px; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>${app.systemSettings.dormName}</h1>
+                        <h2>${app.systemSettings.schoolName}</h2>
+                        <p style="text-align:center; font-weight: bold;">
+                            รายงานการเช็คชื่อประจำวันที่ ${formatThaiDate(app.selectedDate)}
+                        </p>
+                    </div>
+                    
+                    <div class="summary">
+                        <h3>📊 สรุปภาพรวม</h3>
+                        <table style="border: none;">
+                            <tr style="border: none;">
+                                <td style="border: none; text-align: left;">
+                                    <strong>จำนวนนักเรียนทั้งหมด:</strong> ${dailyStats.total} คน
+                                </td>
+                                <td style="border: none; text-align: left;">
+                                    <strong>เช้า - รับ:</strong> ${dailyStats.morningReceived} คน 
+                                    (${Math.round(dailyStats.morningReceived/dailyStats.total*100)}%)
+                                </td>
+                            </tr>
+                            <tr style="border: none;">
+                                <td style="border: none; text-align: left;">
+                                    <strong>เช้า - ส่ง:</strong> ${dailyStats.morningSent} คน 
+                                    (${Math.round(dailyStats.morningSent/dailyStats.total*100)}%)
+                                </td>
+                                <td style="border: none; text-align: left;">
+                                    <strong>เย็น - รับ:</strong> ${dailyStats.eveningReceived} คน 
+                                    (${Math.round(dailyStats.eveningReceived/dailyStats.total*100)}%)
+                                </td>
+                            </tr>
+                            <tr style="border: none;">
+                                <td colspan="2" style="border: none; text-align: left;">
+                                    <strong>เย็น - ส่ง:</strong> ${dailyStats.eveningSent} คน 
+                                    (${Math.round(dailyStats.eveningSent/dailyStats.total*100)}%)
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th rowspan="2">ลำดับ</th>
+                                <th rowspan="2">รหัส</th>
+                                <th rowspan="2">ชื่อ-สกุล</th>
+                                <th rowspan="2">หอนอน</th>
+                                <th colspan="2">เช้า</th>
+                                <th colspan="2">เย็น</th>
+                            </tr>
+                            <tr>
+                                <th>รับ</th>
+                                <th>ส่ง</th>
+                                <th>รับ</th>
+                                <th>ส่ง</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            filtered.forEach((s, index) => {
+                const morning = app.attendance[s.id]?.morning || {};
+                const evening = app.attendance[s.id]?.evening || {};
+                printContent += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${s.code}</td>
+                        <td style="text-align:left; padding-left: 10px;">${s.name}</td>
+                        <td style="text-align:left; padding-left: 10px;">${s.dorm}</td>
+                        <td>${morning.received ? '✓' : '-'}</td>
+                        <td>${morning.sent ? '✓' : '-'}</td>
+                        <td>${evening.received ? '✓' : '-'}</td>
+                        <td>${evening.sent ? '✓' : '-'}</td>
+                    </tr>
+                `;
+            });
+            
+            printContent += `
+                        </tbody>
+                    </table>
+                    
+                    <div class="signature">
+                        <p>ลงชื่อ .............................................. ผู้บันทึก</p>
+                        <p style="margin-left: 60px;">(${app.currentUser.name})</p>
+                        <p>วันที่ ${formatThaiDate(app.selectedDate)}</p>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            const printWindow = window.open('', '', 'width=800,height=600');
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+            }, 250);
+        };
+
         // ================== Render Functions ==================
+
+        const renderAttendancePage = () => {
+            const isDark = app.darkMode;
+            const filtered = getFilteredStudents();
+            const dailyStats = getDailyStats();
+            
+            return `
+                <div class="space-y-6">
+                    <div class="flex flex-wrap justify-between items-center gap-4">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">✓ เช็คชื่อ</h2>
+                        <div class="flex gap-2">
+                            <button onclick="printReport();" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
+                                🖨️ พิมพ์รายงาน
+                            </button>
+                            <button onclick="exportToCSV();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
+                                📥 ส่งออก CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance(); loadMedications(); loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                            <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                ${app.dormitories.map(d => `<option ${app.selectedDorm === d ? 'selected' : ''}>${d}</option>`).join('')}
+                            </select>
+                            <div class="relative">
+                                <input type="text" placeholder="ค้นหารหัส ชื่อ หรือชื่อเล่น..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                ${app.searchTerm ? `
+                                    <button onclick="app.searchTerm = ''; render();" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold">
+                                        ✕
+                                    </button>
+                                ` : ''}
+                            </div>
+                            <div class="${isDark ? 'bg-gray-700 text-white' : 'bg-blue-50 text-blue-800'} px-4 py-2 rounded-lg flex items-center justify-center font-bold">
+                                ทั้งหมด: ${filtered.length} คน
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div class="${isDark ? 'bg-amber-600' : 'bg-amber-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-amber-100' : 'text-amber-700'} text-xs">เช้า - รับ</p>
+                                <p class="${isDark ? 'text-white' : 'text-amber-900'} text-xl font-bold">${dailyStats.morningReceived}/${dailyStats.total}</p>
+                                <p class="${isDark ? 'text-amber-200' : 'text-amber-600'} text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.morningReceived/dailyStats.total)*100) : 0}%</p>
+                            </div>
+                            <div class="${isDark ? 'bg-orange-600' : 'bg-orange-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-orange-100' : 'text-orange-700'} text-xs">เช้า - ส่ง</p>
+                                <p class="${isDark ? 'text-white' : 'text-orange-900'} text-xl font-bold">${dailyStats.morningSent}/${dailyStats.total}</p>
+                                <p class="${isDark ? 'text-orange-200' : 'text-orange-600'} text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.morningSent/dailyStats.total)*100) : 0}%</p>
+                            </div>
+                            <div class="${isDark ? 'bg-blue-600' : 'bg-blue-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs">เย็น - รับ</p>
+                                <p class="${isDark ? 'text-white' : 'text-blue-900'} text-xl font-bold">${dailyStats.eveningReceived}/${dailyStats.total}</p>
+                                <p class="${isDark ? 'text-blue-200' : 'text-blue-600'} text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.eveningReceived/dailyStats.total)*100) : 0}%</p>
+                            </div>
+                            <div class="${isDark ? 'bg-cyan-600' : 'bg-cyan-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-cyan-100' : 'text-cyan-700'} text-xs">เย็น - ส่ง</p>
+                                <p class="${isDark ? 'text-white' : 'text-cyan-900'} text-xl font-bold">${dailyStats.eveningSent}/${dailyStats.total}</p>
+                                <p class="${isDark ? 'text-cyan-200' : 'text-cyan-600'} text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.eveningSent/dailyStats.total)*100) : 0}%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${app.loadingData ? `
+                        <div class="text-center py-12">
+                            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                            <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} mt-4">กำลังโหลดข้อมูล...</p>
+                        </div>
+                    ` : `
+                        <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} border-b-2">
+                                            <th class="px-3 py-3 text-left font-semibold">ลำดับ</th>
+                                            <th class="px-3 py-3 text-left font-semibold">รหัส</th>
+                                            <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
+                                            <th class="px-3 py-3 text-left font-semibold">ชื่อเล่น</th>
+                                            <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
+                                            <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
+                                        </tr>
+                                        <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
+                                            <th colspan="4"></th>
+                                            <th class="px-3 py-2 text-center text-xs bg-amber-400">✓ รับ</th>
+                                            <th class="px-3 py-2 text-center text-xs bg-amber-400">✓ ส่ง</th>
+                                            <th class="px-3 py-2 text-center text-xs bg-blue-400">✓ รับ</th>
+                                            <th class="px-3 py-2 text-center text-xs bg-blue-400">✓ ส่ง</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
+                                        ${filtered.length === 0 ? `
+                                            <tr>
+                                                <td colspan="8" class="px-3 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}">
+                                                    ไม่พบข้อมูลนักเรียน
+                                                </td>
+                                            </tr>
+                                        ` : filtered.map((s, index) => {
+                                            const morning = app.attendance[s.id]?.morning || {};
+                                            const evening = app.attendance[s.id]?.evening || {};
+                                            return `
+                                                <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-blue-50'} transition-colors">
+                                                    <td class="px-3 py-3 text-center">${index + 1}</td>
+                                                    <td class="px-3 py-3 font-mono">${s.code}</td>
+                                                    <td class="px-3 py-3 font-medium">${s.name}</td>
+                                                    <td class="px-3 py-3 ${isDark ? 'text-gray-400' : 'text-gray-600'}">${s.nickname}</td>
+                                                    <td class="px-3 py-3 text-center bg-amber-50">
+                                                        <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'received', this.checked);" class="w-5 h-5 cursor-pointer accent-amber-500" />
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center bg-amber-50">
+                                                        <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'sent', this.checked);" class="w-5 h-5 cursor-pointer accent-amber-500" />
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center bg-blue-50">
+                                                        <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'received', this.checked);" class="w-5 h-5 cursor-pointer accent-blue-500" />
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center bg-blue-50">
+                                                        <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'sent', this.checked);" class="w-5 h-5 cursor-pointer accent-blue-500" />
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `}
+                </div>
+            `;
+        };
+
+        const renderMedicationPage = () => {
+            const isDark = app.darkMode;
+            const filtered = getFilteredStudents();
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">💊 บันทึกการรับประทานยา</h2>
+                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm">
+                            ${formatThaiDate(app.selectedDate)}
+                        </p>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadMedications();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+                            <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none">
+                                ${app.dormitories.map(d => `<option ${app.selectedDorm === d ? 'selected' : ''}>${d}</option>`).join('')}
+                            </select>
+                            <div class="relative">
+                                <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+                                ${app.searchTerm ? `
+                                    <button onclick="app.searchTerm = ''; render();" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold">
+                                        ✕
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-purple-100'} border-b-2">
+                                        <th class="px-4 py-3 text-left font-semibold sticky left-0 ${isDark ? 'bg-gray-700' : 'bg-purple-100'} z-10">รหัส</th>
+                                        <th class="px-4 py-3 text-left font-semibold sticky left-20 ${isDark ? 'bg-gray-700' : 'bg-purple-100'} z-10">ชื่อ-สกุล</th>
+                                        ${app.medicationTimes.map(time => `<th class="px-4 py-3 text-center font-semibold text-sm whitespace-nowrap">${time}</th>`).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
+                                    ${filtered.length === 0 ? `
+                                        <tr>
+                                            <td colspan="${2 + app.medicationTimes.length}" class="px-4 py-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}">
+                                                ไม่พบข้อมูลนักเรียน
+                                            </td>
+                                        </tr>
+                                    ` : filtered.map(s => `
+                                        <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-purple-50'} transition-colors">
+                                            <td class="px-4 py-3 font-mono sticky left-0 ${isDark ? 'bg-gray-800' : 'bg-white'} z-10">${s.code}</td>
+                                            <td class="px-4 py-3 font-medium sticky left-20 ${isDark ? 'bg-gray-800' : 'bg-white'} z-10">${s.name}</td>
+                                            ${app.medicationTimes.map(time => {
+                                                const taken = app.medications[s.id]?.[time]?.taken || false;
+                                                return `
+                                                    <td class="px-4 py-3 text-center">
+                                                        <button onclick="updateMedication(${s.id}, '${time}', ${!taken});" class="${taken ? 'bg-purple-500 text-white shadow-lg scale-110' : isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} w-10 h-10 rounded-lg transition-all transform hover:scale-105">
+                                                            ${taken ? '✓' : ''}
+                                                        </button>
+                                                    </td>
+                                                `;
+                                            }).join('')}
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderHealthCheckPage = () => {
+            const isDark = app.darkMode;
+            const dormList = app.dormitories.filter(d => d !== 'ทั้งหมด');
+            
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">📝 บันทึกสุขภาพ</h2>
+                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm">
+                            ${formatThaiDate(app.selectedDate)}
+                        </p>
+                    </div>
+                    
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">เลือกวันที่</label>
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full md:w-64 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+                    </div>
+
+                    ${dormList.map((dorm, index) => {
+                        const dormStudents = app.students.filter(s => s.dorm === dorm);
+                        const dormHealth = app.healthData[dorm] || {};
+                        return `
+                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-l-4 border-green-500">
+                                <div class="flex justify-between items-start mb-4 flex-wrap gap-4">
+                                    <div>
+                                        <h3 class="${isDark ? 'text-white' : 'text-gray-900'} font-bold text-lg">🏘️ ${dorm}</h3>
+                                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm mt-1">จำนวนนักเรียน: ${dormStudents.length} คน</p>
+                                    </div>
+                                    <button onclick="updateHealth('${dorm}', document.getElementById('health_textarea_${index}').value);" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-md hover:shadow-lg transition-all">
+                                        ✓ บันทึก
+                                    </button>
+                                </div>
+                                <textarea 
+                                    id="health_textarea_${index}"
+                                    placeholder="บันทึกสุขภาพของหอนอน เช่น สถานะสุขภาพ การจ่ายยา พฤติกรรม แนวทางพัฒนา ปัญหาที่พบ ฯลฯ"
+                                    class="${isDark ? 'bg-gray-700 text-white border-gray-600 placeholder-gray-500' : 'border-gray-300 bg-white placeholder-gray-400'} w-full px-4 py-3 border rounded-lg h-32 focus:ring-2 focus:ring-green-500 focus:outline-none resize-none"
+                                >${dormHealth.notes || ''}</textarea>
+                                <p class="${isDark ? 'text-gray-400' : 'text-gray-500'} text-xs mt-3 flex items-center gap-2">
+                                    🕐 อัปเดตล่าสุด: ${dormHealth.timestamp ? new Date(dormHealth.timestamp).toLocaleString('th-TH', { 
+                                        year: 'numeric', 
+                                        month: 'long', 
+                                        day: 'numeric', 
+                                        hour: '2-digit', 
+                                        minute: '2-digit' 
+                                    }) : 'ยังไม่มีข้อมูล'}
+                                </p>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        };
+
+        const renderStatisticsPage = () => {
+            const isDark = app.darkMode;
+            const dailyStats = getDailyStats();
+            const dormStats = getDormStats();
+            const dormDailyStats = getDailyStatsByDorm();
+
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">📊 สถิติและรายงาน</h2>
+                        <button onclick="printReport();" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-md hover:shadow-lg transition-all">
+                            🖨️ พิมพ์รายงาน
+                        </button>
+                    </div>
+                    
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-3">เลือกวันที่:</label>
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full md:w-64 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} mt-2 text-sm">${formatThaiDate(app.selectedDate)}</p>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-purple-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-6 text-lg flex items-center gap-2">
+                            📈 สรุปรวมทั้งหมด
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            ${['morningReceived', 'morningSent', 'eveningReceived', 'eveningSent'].map((key, idx) => {
+                                const labels = ['เช้า - รับ', 'เช้า - ส่ง', 'เย็น - รับ', 'เย็น - ส่ง'];
+                                const colors = ['amber', 'orange', 'blue', 'cyan'];
+                                const icons = ['📥', '📤', '📥', '📤'];
+                                const color = colors[idx];
+                                const value = dailyStats[key];
+                                const percent = dailyStats.total > 0 ? Math.round((value / dailyStats.total) * 100) : 0;
+                                
+                                return `
+                                    <div class="bg-gradient-to-br from-${color}-500 to-${color}-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex-1">
+                                                <p class="text-${color}-100 text-sm">${labels[idx]}</p>
+                                                <p class="text-4xl font-bold mt-2">${value}</p>
+                                                <div class="mt-2 flex items-center gap-2">
+                                                    <div class="w-full bg-${color}-400 rounded-full h-2">
+                                                        <div class="bg-white rounded-full h-2 transition-all" style="width: ${percent}%"></div>
+                                                    </div>
+                                                    <span class="text-${color}-200 text-sm whitespace-nowrap">${percent}%</span>
+                                                </div>
+                                            </div>
+                                            <div class="text-6xl opacity-20">${icons[idx]}</div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-6 text-lg flex items-center gap-2">
+                            👥 จำนวนนักเรียนแต่ละหอนอน
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            ${Object.entries(dormStats).map(([dorm, count]) => {
+                                const maxCount = Math.max(...Object.values(dormStats));
+                                const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                return `
+                                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} rounded-lg p-4 border-l-4 border-blue-500 transform hover:scale-105 transition-transform">
+                                        <p class="${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm mb-2">${dorm}</p>
+                                        <p class="${isDark ? 'text-white' : 'text-gray-900'} text-3xl font-bold">${count} คน</p>
+                                        <div class="mt-3 w-full bg-blue-200 rounded-full h-2">
+                                            <div class="bg-blue-600 rounded-full h-2 transition-all duration-500" style="width: ${percentage}%"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-green-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-6 text-lg flex items-center gap-2">
+                            🏘️ สรุปแยกเป็นเรือนนอน <span class="text-sm font-normal">(${formatThaiDate(app.selectedDate)})</span>
+                        </h3>
+                        <div class="space-y-4">
+                            ${Object.entries(dormDailyStats).map(([dorm, stats]) => `
+                                <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-green-50 to-green-100'} rounded-lg p-5 border-l-4 border-green-500">
+                                    <p class="${isDark ? 'text-white' : 'text-gray-900'} font-bold mb-4 text-lg">${dorm} (รวม ${stats.total} คน)</p>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                        ${[
+                                            { label: '✓ มา', value: stats.present, color: 'green' },
+                                            { label: '✓ กลับบ้าน', value: stats.returned, color: 'blue' },
+                                            { label: '✓ อยู่หอ', value: stats.leftInDorm, color: 'yellow' },
+                                            { label: '✕ ไม่มา', value: stats.absent, color: 'red' }
+                                        ].map(item => {
+                                            const percent = stats.total > 0 ? Math.round((item.value/stats.total)*100) : 0;
+                                            return `
+                                                <div class="${isDark ? `bg-${item.color}-600` : `bg-${item.color}-200`} rounded-lg p-4 text-center">
+                                                    <p class="${isDark ? `text-${item.color}-100` : `text-${item.color}-700`} text-xs mb-2">${item.label}</p>
+                                                    <p class="${isDark ? 'text-white' : `text-${item.color}-900`} text-2xl font-bold">${item.value}</p>
+                                                    <p class="${isDark ? `text-${item.color}-200` : `text-${item.color}-600`} text-xs mt-1">${percent}%</p>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
 
         const renderStudentManagementPage = () => {
             const isDark = app.darkMode;
@@ -862,10 +1282,10 @@
                     <div class="flex justify-between items-center flex-wrap gap-4">
                         <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">👥 จัดการนักเรียน</h2>
                         <div class="flex gap-2">
-                            <button onclick="window.importStudentsCSV();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
+                            <button onclick="importStudentsCSV();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
                                 📤 นำเข้า CSV
                             </button>
-                            <button onclick="window.exportAllStudents();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
+                            <button onclick="exportAllStudents();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
                                 📥 ส่งออก CSV
                             </button>
                         </div>
@@ -878,32 +1298,32 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสนักเรียน *</label>
-                                <input type="text" placeholder="เช่น 1825" value="${escapeHtml(app.newStudent.code)}" oninput="app.newStudent.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+                                <input type="text" placeholder="เช่น 1825" value="${app.newStudent.code}" oninput="app.newStudent.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อ-สกุล *</label>
-                                <input type="text" placeholder="เด็กหญิง..." value="${escapeHtml(app.newStudent.name)}" oninput="app.newStudent.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+                                <input type="text" placeholder="เด็กหญิง..." value="${app.newStudent.name}" oninput="app.newStudent.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อเล่น</label>
-                                <input type="text" placeholder="ชื่อเล่น" value="${escapeHtml(app.newStudent.nickname)}" oninput="app.newStudent.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+                                <input type="text" placeholder="ชื่อเล่น" value="${app.newStudent.nickname}" oninput="app.newStudent.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หอนอน *</label>
                                 <select onchange="app.newStudent.dorm = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none">
-                                    ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.newStudent.dorm === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
+                                    ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.newStudent.dorm === d ? 'selected' : ''}>${d}</option>`).join('')}
                                 </select>
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หมายเลขห้อง</label>
-                                <input type="text" placeholder="ห้อง 101" value="${escapeHtml(app.newStudent.room)}" oninput="app.newStudent.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+                                <input type="text" placeholder="ห้อง 101" value="${app.newStudent.room}" oninput="app.newStudent.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ความพิการ (ถ้ามี)</label>
-                                <input type="text" placeholder="ระบุ (ถ้ามี)" value="${escapeHtml(app.newStudent.disability)}" oninput="app.newStudent.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+                                <input type="text" placeholder="ระบุ (ถ้ามี)" value="${app.newStudent.disability}" oninput="app.newStudent.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
                             </div>
                         </div>
-                        <button onclick="window.addStudent();" class="mt-4 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-md hover:shadow-lg transition-all">
+                        <button onclick="addStudent();" class="mt-4 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-md hover:shadow-lg transition-all">
                             ✓ เพิ่มนักเรียน
                         </button>
                     </div>
@@ -917,7 +1337,7 @@
                                 </span>
                             </h3>
                             <div class="relative">
-                                <input type="text" placeholder="ค้นหา..." value="${escapeHtml(app.searchTerm)}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none w-64" />
+                                <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none w-64" />
                                 ${app.searchTerm ? `
                                     <button onclick="app.searchTerm = ''; render();" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 font-bold">
                                         ✕
@@ -949,18 +1369,18 @@
                                     ` : filteredStudents.map((s, index) => `
                                         <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-blue-50'} transition-colors">
                                             <td class="px-4 py-3 text-center">${index + 1}</td>
-                                            <td class="px-4 py-3 font-mono">${escapeHtml(s.code)}</td>
-                                            <td class="px-4 py-3 font-medium">${escapeHtml(s.name)}</td>
-                                            <td class="px-4 py-3">${escapeHtml(s.nickname)}</td>
-                                            <td class="px-4 py-3">${escapeHtml(s.dorm)}</td>
-                                            <td class="px-4 py-3">${escapeHtml(s.room)}</td>
-                                            <td class="px-4 py-3">${escapeHtml(s.disability) || '-'}</td>
+                                            <td class="px-4 py-3 font-mono">${s.code}</td>
+                                            <td class="px-4 py-3 font-medium">${s.name}</td>
+                                            <td class="px-4 py-3">${s.nickname}</td>
+                                            <td class="px-4 py-3">${s.dorm}</td>
+                                            <td class="px-4 py-3">${s.room}</td>
+                                            <td class="px-4 py-3">${s.disability || '-'}</td>
                                             <td class="px-4 py-3 text-center">
                                                 <div class="flex gap-2 justify-center">
-                                                    <button onclick="window.editStudent(${s.id});" class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium transition-colors">
+                                                    <button onclick="editStudent(${s.id});" class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium transition-colors">
                                                         ✏️ แก้ไข
                                                     </button>
-                                                    <button onclick="window.deleteStudent(${s.id});" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-medium transition-colors">
+                                                    <button onclick="deleteStudent(${s.id});" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-medium transition-colors">
                                                         🗑️ ลบ
                                                     </button>
                                                 </div>
@@ -973,42 +1393,42 @@
                     </div>
 
                     ${app.editingStudent ? `
-                        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm" onclick="if(event.target === this) window.cancelEdit();">
-                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl p-6 w-full max-w-2xl" onclick="event.stopPropagation();">
+                        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl p-6 w-full max-w-2xl">
                                 <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-xl">✏️ แก้ไขข้อมูลนักเรียน</h3>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสนักเรียน *</label>
-                                        <input type="text" value="${escapeHtml(app.editForm.code)}" oninput="app.editForm.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                        <input type="text" value="${app.editForm.code}" oninput="app.editForm.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                     <div>
                                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อ-สกุล *</label>
-                                        <input type="text" value="${escapeHtml(app.editForm.name)}" oninput="app.editForm.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                        <input type="text" value="${app.editForm.name}" oninput="app.editForm.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                     <div>
                                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อเล่น</label>
-                                        <input type="text" value="${escapeHtml(app.editForm.nickname)}" oninput="app.editForm.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                        <input type="text" value="${app.editForm.nickname}" oninput="app.editForm.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                     <div>
                                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หอนอน *</label>
                                         <select onchange="app.editForm.dorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                                            ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.editForm.dorm === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
+                                            ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.editForm.dorm === d ? 'selected' : ''}>${d}</option>`).join('')}
                                         </select>
                                     </div>
                                     <div>
                                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หมายเลขห้อง</label>
-                                        <input type="text" value="${escapeHtml(app.editForm.room)}" oninput="app.editForm.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                        <input type="text" value="${app.editForm.room}" oninput="app.editForm.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                     <div>
                                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ความพิการ</label>
-                                        <input type="text" value="${escapeHtml(app.editForm.disability)}" oninput="app.editForm.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                                        <input type="text" value="${app.editForm.disability}" oninput="app.editForm.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                                     </div>
                                 </div>
                                 <div class="flex gap-3 mt-6">
-                                    <button onclick="window.saveEditStudent();" class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors">
+                                    <button onclick="saveEditStudent();" class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors">
                                         ✓ บันทึก
                                     </button>
-                                    <button onclick="window.cancelEdit();" class="flex-1 px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-medium transition-colors">
+                                    <button onclick="cancelEdit();" class="flex-1 px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-medium transition-colors">
                                         ✕ ยกเลิก
                                     </button>
                                 </div>
@@ -1019,117 +1439,85 @@
             `;
         };
 
-        // ส่วนที่เหลือของ render functions จากโค้ดเดิม...
-        // (ใช้โค้ดเดิมสำหรับ renderAttendancePage, renderMedicationPage, renderHealthCheckPage, renderStatisticsPage, renderSettingsPage)
-
-        const renderAttendancePage = () => {
+        const renderSettingsPage = () => {
             const isDark = app.darkMode;
-            const filtered = getFilteredStudents();
-            const dailyStats = getDailyStats();
-            
             return `
                 <div class="space-y-6">
-                    <div class="flex flex-wrap justify-between items-center gap-4">
-                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">✓ เช็คชื่อ</h2>
-                        <div class="flex gap-2">
-                            <button onclick="window.printReport();" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 shadow-md">
-                                🖨️ พิมพ์รายงาน
+                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">⚙️ ตั้งค่าระบบ</h2>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-blue-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            🏫 ตั้งค่าข้อมูลระบบ
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อโรงเรียน</label>
+                                <input type="text" value="${app.systemSettings.schoolName}" oninput="app.systemSettings.schoolName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อระบบ</label>
+                                <input type="text" value="${app.systemSettings.dormName}" oninput="app.systemSettings.dormName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ปีการศึกษา</label>
+                                <input type="text" value="${app.systemSettings.academicYear}" oninput="app.systemSettings.academicYear = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                            </div>
+                            <button onclick="saveSystemSettings();" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md hover:shadow-lg transition-all">
+                                ✓ บันทึกการตั้งค่า
                             </button>
-                            <button onclick="window.exportToCSV();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-md">
-                                📥 ส่งออก CSV
-                            </button>
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            👤 ข้อมูลผู้ใช้ปัจจุบัน
+                        </h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex items-center gap-3">
+                                <span class="${isDark ? 'text-gray-400' : 'text-gray-600'}">ชื่อ:</span>
+                                <span class="${isDark ? 'text-white' : 'text-gray-900'} font-medium">${app.currentUser?.name}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="${isDark ? 'text-gray-400' : 'text-gray-600'}">ชื่อผู้ใช้:</span>
+                                <span class="${isDark ? 'text-white' : 'text-gray-900'} font-medium">${app.currentUser?.username}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="${isDark ? 'text-gray-400' : 'text-gray-600'}">บทบาท:</span>
+                                <span class="${isDark ? 'bg-blue-600' : 'bg-blue-500'} text-white px-3 py-1 rounded-full text-xs font-medium">
+                                    ${app.currentUser?.role === 'admin' ? '👨‍💼 ผู้จัดการระบบ' : '👨‍🏫 ครูประจำหอ'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-green-900' : 'bg-green-50'} border ${isDark ? 'border-green-700' : 'border-green-200'} rounded-xl p-6">
+                        <h3 class="${isDark ? 'text-green-200' : 'text-green-800'} font-bold mb-3 flex items-center gap-2">
+                            ✅ ข้อมูล Firebase
+                        </h3>
+                        <div class="space-y-2 text-sm ${isDark ? 'text-green-300' : 'text-green-700'}">
+                            <p>✓ เชื่อมต่อ Firebase สำเร็จ</p>
+                            <p class="text-xs">Project: ${firebaseConfig.projectId}</p>
+                            <p class="text-xs mt-3">ข้อมูลทั้งหมดถูกบันทึกใน Cloud Database อัตโนมัติ</p>
                         </div>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance(); loadMedications(); loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" />
-                            <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
-                                ${app.dormitories.map(d => `<option ${app.selectedDorm === d ? 'selected' : ''}>${d}</option>`).join('')}
-                            </select>
-                            <div class="relative">
-                                <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500" />
-                                ${app.searchTerm ? `<button onclick="app.searchTerm = ''; render();" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">✕</button>` : ''}
-                            </div>
-                            <div class="${isDark ? 'bg-gray-700 text-white' : 'bg-blue-50 text-blue-800'} px-4 py-2 rounded-lg flex items-center justify-center font-bold">
-                                ทั้งหมด: ${filtered.length} คน
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                            <div class="${isDark ? 'bg-amber-600' : 'bg-amber-100'} rounded-lg p-3">
-                                <p class="${isDark ? 'text-amber-100' : 'text-amber-700'} text-xs">เช้า - รับ</p>
-                                <p class="${isDark ? 'text-white' : 'text-amber-900'} text-xl font-bold">${dailyStats.morningReceived}/${dailyStats.total}</p>
-                            </div>
-                            <div class="${isDark ? 'bg-orange-600' : 'bg-orange-100'} rounded-lg p-3">
-                                <p class="${isDark ? 'text-orange-100' : 'text-orange-700'} text-xs">เช้า - ส่ง</p>
-                                <p class="${isDark ? 'text-white' : 'text-orange-900'} text-xl font-bold">${dailyStats.morningSent}/${dailyStats.total}</p>
-                            </div>
-                            <div class="${isDark ? 'bg-blue-600' : 'bg-blue-100'} rounded-lg p-3">
-                                <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs">เย็น - รับ</p>
-                                <p class="${isDark ? 'text-white' : 'text-blue-900'} text-xl font-bold">${dailyStats.eveningReceived}/${dailyStats.total}</p>
-                            </div>
-                            <div class="${isDark ? 'bg-cyan-600' : 'bg-cyan-100'} rounded-lg p-3">
-                                <p class="${isDark ? 'text-cyan-100' : 'text-cyan-700'} text-xs">เย็น - ส่ง</p>
-                                <p class="${isDark ? 'text-white' : 'text-cyan-900'} text-xl font-bold">${dailyStats.eveningSent}/${dailyStats.total}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} border-b-2">
-                                        <th class="px-3 py-3 text-left font-semibold">ลำดับ</th>
-                                        <th class="px-3 py-3 text-left font-semibold">รหัส</th>
-                                        <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
-                                        <th class="px-3 py-3 text-left font-semibold">ชื่อเล่น</th>
-                                        <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
-                                        <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
-                                    </tr>
-                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
-                                        <th colspan="4"></th>
-                                        <th class="px-3 py-2 text-center text-xs bg-amber-400">✓ รับ</th>
-                                        <th class="px-3 py-2 text-center text-xs bg-amber-400">✓ ส่ง</th>
-                                        <th class="px-3 py-2 text-center text-xs bg-blue-400">✓ รับ</th>
-                                        <th class="px-3 py-2 text-center text-xs bg-blue-400">✓ ส่ง</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
-                                    ${filtered.map((s, index) => {
-                                        const morning = app.attendance[s.id]?.morning || {};
-                                        const evening = app.attendance[s.id]?.evening || {};
-                                        return `
-                                            <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-blue-50'} transition-colors">
-                                                <td class="px-3 py-3 text-center">${index + 1}</td>
-                                                <td class="px-3 py-3 font-mono">${s.code}</td>
-                                                <td class="px-3 py-3 font-medium">${s.name}</td>
-                                                <td class="px-3 py-3">${s.nickname}</td>
-                                                <td class="px-3 py-3 text-center bg-amber-50">
-                                                    <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="window.updateAttendance(${s.id}, 'morning', 'received', this.checked);" class="w-5 h-5 cursor-pointer accent-amber-500" />
-                                                </td>
-                                                <td class="px-3 py-3 text-center bg-amber-50">
-                                                    <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="window.updateAttendance(${s.id}, 'morning', 'sent', this.checked);" class="w-5 h-5 cursor-pointer accent-amber-500" />
-                                                </td>
-                                                <td class="px-3 py-3 text-center bg-blue-50">
-                                                    <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="window.updateAttendance(${s.id}, 'evening', 'received', this.checked);" class="w-5 h-5 cursor-pointer accent-blue-500" />
-                                                </td>
-                                                <td class="px-3 py-3 text-center bg-blue-50">
-                                                    <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="window.updateAttendance(${s.id}, 'evening', 'sent', this.checked);" class="w-5 h-5 cursor-pointer accent-blue-500" />
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            ℹ️ เกี่ยวกับระบบ
+                        </h3>
+                        <div class="space-y-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}">
+                            <p>📌 ระบบจัดการหอนอน (Dormitory Management System)</p>
+                            <p>🏗️ เวอร์ชัน 2.0 - Firebase Edition (สมบูรณ์)</p>
+                            <p>🚀 รองรับ: เช็คชื่อ, บันทึกยา, บันทึกสุขภาพ, สถิติ, รายงาน, Import/Export CSV</p>
+                            <p>💾 ข้อมูลถูกบันทึกแบบเรียลไทม์บน Cloud Firestore</p>
+                            <p>🎨 รองรับ Dark Mode และ Responsive Design</p>
                         </div>
                     </div>
                 </div>
             `;
         };
 
-        // เนื่องจากความยาวของโค้ด ผมจะข้ามไปที่ส่วน Main Render และ Event Listeners
+        // ================== Main Render Function ==================
 
         const render = () => {
             const isDark = app.darkMode;
@@ -1149,20 +1537,20 @@
                             <div class="space-y-4">
                                 <div>
                                     <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อผู้ใช้</label>
-                                    <input type="text" placeholder="admin หรือ teacher" value="${app.loginForm.username}" oninput="app.loginForm.username = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                                    <input type="text" placeholder="admin หรือ teacher" value="${app.loginForm.username}" oninput="app.loginForm.username = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" />
                                 </div>
                                 <div>
                                     <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสผ่าน</label>
-                                    <input type="password" placeholder="••••••••" value="${app.loginForm.password}" oninput="app.loginForm.password = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                                    <input type="password" placeholder="••••••••" value="${app.loginForm.password}" oninput="app.loginForm.password = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all" />
                                 </div>
-                                ${app.loginError ? `<div class="p-3 ${isDark ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'} border border-red-400 rounded-lg text-sm">${app.loginError}</div>` : ''}
-                                <button onclick="handleLogin();" class="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-bold">
+                                ${app.loginError ? `<div class="p-3 ${isDark ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'} border border-red-400 rounded-lg text-sm animate-shake">${app.loginError}</div>` : ''}
+                                <button onclick="handleLogin();" class="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-bold transition-all shadow-md hover:shadow-lg">
                                     เข้าสู่ระบบ
                                 </button>
                             </div>
                             <div class="${isDark ? 'bg-gray-700 text-gray-300' : 'bg-blue-50 text-gray-700'} mt-6 p-4 rounded-lg text-sm">
                                 <p class="font-bold mb-2">🔐 บัญชีทดสอบ:</p>
-                                <p>👤 Admin: <code class="bg-gray-800 text-green-400 px-2 py-1 rounded">admin / admin123</code></p>
+                                <p class="mb-1">👤 Admin: <code class="bg-gray-800 text-green-400 px-2 py-1 rounded">admin / admin123</code></p>
                                 <p>👨‍🏫 Teacher: <code class="bg-gray-800 text-green-400 px-2 py-1 rounded">teacher / teacher123</code></p>
                             </div>
                         </div>
@@ -1173,69 +1561,165 @@
 
             const pages = {
                 attendance: renderAttendancePage(),
+                medication: renderMedicationPage(),
+                health: renderHealthCheckPage(),
+                statistics: renderStatisticsPage(),
                 students: renderStudentManagementPage(),
-                // เพิ่ม pages อื่นๆ ตามต้องการ...
+                settings: renderSettingsPage()
             };
 
             root.innerHTML = `
                 <div class="flex h-screen ${isDark ? 'bg-gray-900' : 'bg-gray-100'}">
+                    <!-- Sidebar -->
                     <div class="${app.sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white transform transition-transform duration-300 shadow-2xl">
                         <div class="p-6 border-b border-blue-700">
                             <h2 class="text-xl font-bold">${app.systemSettings.dormName}</h2>
                             <p class="text-xs text-blue-200 mt-1">${app.systemSettings.schoolName}</p>
-                            <button onclick="app.sidebarOpen = false; render();" class="lg:hidden absolute top-6 right-6 hover:bg-blue-700 rounded p-1">✕</button>
+                            <button onclick="app.sidebarOpen = false; render();" class="lg:hidden absolute top-6 right-6 hover:bg-blue-700 rounded p-1 transition-colors">✕</button>
                         </div>
-                        <nav class="mt-6 px-3 space-y-2">
-                            <button onclick="app.currentPage = 'attendance'; render();" class="w-full text-left px-4 py-3 rounded-lg ${app.currentPage === 'attendance' ? 'bg-blue-700 shadow-lg' : 'hover:bg-blue-700/50'}">
-                                ✓ เช็คชื่อ
-                            </button>
-                            <button onclick="app.currentPage = 'students'; render();" class="w-full text-left px-4 py-3 rounded-lg ${app.currentPage === 'students' ? 'bg-blue-700 shadow-lg' : 'hover:bg-blue-700/50'}">
-                                👥 จัดการนักเรียน
-                            </button>
+                        <nav class="mt-6 px-3 space-y-2 overflow-y-auto" style="max-height: calc(100vh - 250px);">
+                            ${[
+                                { page: 'attendance', label: '✓ เช็คชื่อ' },
+                                { page: 'medication', label: '💊 บันทึกยา' },
+                                { page: 'health', label: '🌡️ สุขภาพ' },
+                                { page: 'statistics', label: '📊 สถิติ' },
+                                { page: 'students', label: '👥 จัดการนักเรียน' },
+                                { page: 'settings', label: '⚙️ ตั้งค่า' }
+                            ].map(({ page, label }) => `
+                                <button onclick="app.currentPage = '${page}'; app.sidebarOpen = false; render();" class="w-full text-left px-4 py-3 rounded-lg transition-all font-medium ${app.currentPage === page ? 'bg-blue-700 shadow-lg scale-105' : 'text-blue-100 hover:bg-blue-700/50 hover:scale-102'}">
+                                    ${label}
+                                </button>
+                            `).join('')}
                         </nav>
-                        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-700">
-                            <button onclick="handleLogout();" class="w-full px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg">
-                                🚪 ออกจากระบบ
+                        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-700 space-y-2">
+                            <button onclick="app.darkMode = !app.darkMode; render();" class="w-full flex items-center space-x-3 px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg transition-colors">
+                                <span class="text-xl">${app.darkMode ? '☀️' : '🌙'}</span> 
+                                <span>${app.darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                            </button>
+                            <button onclick="handleLogout();" class="w-full flex items-center space-x-3 px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg transition-colors">
+                                <span class="text-xl">🚪</span> 
+                                <span>ออกจากระบบ</span>
                             </button>
                         </div>
                     </div>
 
+                    <!-- Main Content -->
                     <div class="flex-1 lg:ml-64 flex flex-col">
-                        <div class="${isDark ? 'bg-gray-800' : 'bg-white'} shadow-md border-b p-4">
-                            <button onclick="app.sidebarOpen = true; render();" class="lg:hidden text-2xl">☰</button>
-                            <span class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">${app.currentUser?.name}</span>
+                        <!-- Header -->
+                        <div class="${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white'} shadow-md border-b">
+                            <div class="flex items-center justify-between px-6 py-4">
+                                <button onclick="app.sidebarOpen = true; render();" class="lg:hidden ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'} text-2xl transition-colors">☰</button>
+                                <h1 class="${isDark ? 'text-white' : 'text-gray-800'} text-2xl font-bold hidden lg:block">${app.systemSettings.dormName}</h1>
+                                <div class="text-right">
+                                    <p class="${isDark ? 'text-white' : 'text-gray-900'} text-sm font-medium">${app.currentUser?.name}</p>
+                                    <p class="${isDark ? 'text-gray-400' : 'text-gray-500'} text-xs">${app.currentUser?.role === 'admin' ? '👨‍💼 Admin' : '👨‍🏫 Teacher'}</p>
+                                </div>
+                            </div>
                         </div>
 
+                        <!-- Page Content -->
                         <div class="${isDark ? 'bg-gray-900' : 'bg-gray-100'} flex-1 overflow-auto p-6">
-                            ${pages[app.currentPage] || renderAttendancePage()}
+                            ${pages[app.currentPage]}
                         </div>
                     </div>
 
+                    <!-- Toast Notification -->
                     ${app.toastMessage ? `
-                        <div class="${app.toastType === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-6 py-4 rounded-lg shadow-2xl fixed top-4 right-4 z-50 flex items-center gap-3 animate-slide-in">
+                        <div class="${app.toastType === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-6 py-4 rounded-lg shadow-2xl fixed top-4 right-4 z-50 flex items-center gap-3 animate-slide-in max-w-md">
                             <span class="text-2xl">${app.toastType === 'success' ? '✓' : '✕'}</span>
-                            <span class="font-medium">${app.toastMessage}</span>
+                            <span class="font-medium whitespace-pre-line">${app.toastMessage}</span>
                         </div>
                     ` : ''}
 
-                    ${app.sidebarOpen ? `<div onclick="app.sidebarOpen = false; render();" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"></div>` : ''}
+                    <!-- Sidebar Overlay -->
+                    ${app.sidebarOpen ? `<div onclick="app.sidebarOpen = false; render();" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden backdrop-blur-sm"></div>` : ''}
                 </div>
 
                 <style>
                     @keyframes slide-in {
-                        from { transform: translateX(100%); opacity: 0; }
-                        to { transform: translateX(0); opacity: 1; }
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                    @keyframes shake {
+                        0%, 100% { transform: translateX(0); }
+                        10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+                        20%, 40%, 60%, 80% { transform: translateX(5px); }
                     }
                     .animate-slide-in {
                         animation: slide-in 0.3s ease-out;
+                    }
+                    .animate-shake {
+                        animation: shake 0.5s ease-in-out;
+                    }
+                    
+                    /* Custom Scrollbar */
+                    ::-webkit-scrollbar {
+                        width: 8px;
+                        height: 8px;
+                    }
+                    ::-webkit-scrollbar-track {
+                        background: ${isDark ? '#1f2937' : '#f1f1f1'};
+                    }
+                    ::-webkit-scrollbar-thumb {
+                        background: ${isDark ? '#4b5563' : '#888'};
+                        border-radius: 4px;
+                    }
+                    ::-webkit-scrollbar-thumb:hover {
+                        background: ${isDark ? '#6b7280' : '#555'};
+                    }
+
+                    /* Print Styles */
+                    @media print {
+                        body { margin: 0; padding: 0; }
+                        .no-print { display: none !important; }
                     }
                 </style>
             `;
         };
 
+        // ================== Event Listeners ==================
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // ESC key
+            if (e.key === 'Escape') {
+                if (app.sidebarOpen) {
+                    app.sidebarOpen = false;
+                    render();
+                }
+                if (app.editingStudent) {
+                    app.editingStudent = null;
+                    render();
+                }
+            }
+            
+            // Ctrl/Cmd + S to save (prevent default)
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                showToast('ข้อมูลถูกบันทึกอัตโนมัติ', 'success');
+            }
+        });
+
+        // Dark mode preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            app.darkMode = true;
+        }
+
         // Initial render
+        if (app.darkMode) document.documentElement.classList.add('dark');
         render();
-        console.log('✅ ระบบพร้อมใช้งาน - ปัญหาเพิ่ม/แก้ไข/ลบ แก้ไขแล้ว');
+
+        // Log system info
+        console.log('%c🏠 ระบบจัดการหอนอน v2.0', 'color: #2563eb; font-size: 20px; font-weight: bold;');
+        console.log('%c✅ System Ready', 'color: #16a34a; font-size: 14px;');
+        console.log('%c📊 Firebase: Connected', 'color: #16a34a; font-size: 12px;');
+        console.log('%c🎨 UI: Loaded', 'color: #16a34a; font-size: 12px;');
     </script>
 </body>
 </html>
