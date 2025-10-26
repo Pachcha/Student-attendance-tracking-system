@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบจัดการหอนอน</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class'
@@ -17,21 +15,6 @@
     <div id="app"></div>
 
     <script>
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyBrxqiawo1PCK4lrU6-gYgmOE74ujXdPmQ",
-            authDomain: "student-attendance-track-53618.firebaseapp.com",
-            databaseURL: "https://student-attendance-track-53618-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "student-attendance-track-53618",
-            storageBucket: "student-attendance-track-53618.firebasestorage.app",
-            messagingSenderId: "508348201605",
-            appId: "1:508348201605:web:8614c619aa24932c0987ec"
-        };
-
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-
         // App State
         const app = {
             isLoggedIn: false,
@@ -39,7 +22,7 @@
             darkMode: false,
             currentPage: 'attendance',
             sidebarOpen: false,
-            loadingData: true,
+            loadingData: false,
             
             users: [
                 { id: 1, username: 'admin', password: 'admin123', name: 'ผู้จัดการระบบ', role: 'admin' },
@@ -79,39 +62,36 @@
             loginForm: { username: '', password: '' }
         };
 
-        // Load initial data from Firebase
-        const loadDataFromFirebase = () => {
-            database.ref('dorm_data').once('value', (snapshot) => {
-                if (snapshot.exists()) {
-                    const data = snapshot.val();
-                    if (data.students) app.students = data.students;
-                    if (data.attendance) app.attendance = data.attendance;
-                    if (data.medications) app.medications = data.medications;
-                    if (data.healthData) app.healthData = data.healthData;
-                    if (data.systemSettings) app.systemSettings = data.systemSettings;
-                }
-                app.loadingData = false;
-                render();
-            }).catch(err => {
-                console.log('Firebase not available, using local data');
-                app.loadingData = false;
-                render();
-            });
+        const saveData = () => {
+            try {
+                localStorage.setItem('dorm_data', JSON.stringify({
+                    students: app.students,
+                    attendance: app.attendance,
+                    medications: app.medications,
+                    healthData: app.healthData,
+                    systemSettings: app.systemSettings,
+                    lastUpdated: new Date().toISOString()
+                }));
+            } catch (err) {
+                console.log('Local storage not available');
+            }
         };
 
-        loadDataFromFirebase();
-
-        const saveData = () => {
-            database.ref('dorm_data').set({
-                students: app.students,
-                attendance: app.attendance,
-                medications: app.medications,
-                healthData: app.healthData,
-                systemSettings: app.systemSettings,
-                lastUpdated: new Date().toISOString()
-            }).catch(err => {
-                console.log('Save to Firebase failed, data saved locally');
-            });
+        const loadData = () => {
+            try {
+                const data = localStorage.getItem('dorm_data');
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    if (parsed.students) app.students = parsed.students;
+                    if (parsed.attendance) app.attendance = parsed.attendance;
+                    if (parsed.medications) app.medications = parsed.medications;
+                    if (parsed.healthData) app.healthData = parsed.healthData;
+                    if (parsed.systemSettings) app.systemSettings = parsed.systemSettings;
+                }
+            } catch (err) {
+                console.log('Could not load data from localStorage');
+            }
+            render();
         };
 
         const showToast = (message, type = 'success') => {
@@ -149,37 +129,6 @@
             app.currentUser = null;
             app.currentPage = 'attendance';
             showToast('ออกจากระบบสำเร็จ');
-        };
-
-        const handleAddStudent = () => {
-            if (!app.newStudent.code || !app.newStudent.name || !app.newStudent.room) {
-                showToast('กรุณากรอก รหัส, ชื่อ-สกุล และห้อง', 'error');
-                return;
-            }
-            if (!/^\d{4}$/.test(app.newStudent.code)) {
-                showToast('รหัสนักเรียนต้องเป็นตัวเลข 4 หลัก', 'error');
-                return;
-            }
-            if (app.students.find(s => s.code === app.newStudent.code)) {
-                showToast('รหัสนักเรียนนี้มีอยู่แล้ว', 'error');
-                return;
-            }
-            const newId = Math.max(...app.students.map(s => s.id), 0) + 1;
-            app.students.push({ id: newId, ...app.newStudent });
-            app.newStudent = { code: '', name: '', nickname: '', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: '', group: 'ตามตาราง' };
-            saveData();
-            showToast('เพิ่มนักเรียนสำเร็จ');
-            render();
-        };
-
-        const handleDeleteStudent = (id) => {
-            if (confirm('คุณแน่ใจหรือว่าต้องการลบนักเรียนคนนี้?')) {
-                app.students = app.students.filter(s => s.id !== id);
-                delete app.attendance[id];
-                saveData();
-                showToast('ลบนักเรียนสำเร็จ');
-                render();
-            }
         };
 
         const updateAttendance = (studentId, session, field, value) => {
@@ -621,18 +570,6 @@
             const isDark = app.darkMode;
             const root = document.getElementById('app');
             
-            if (app.loadingData) {
-                root.innerHTML = `
-                    <div class="${isDark ? 'bg-gray-900' : 'bg-gray-100'} min-h-screen flex items-center justify-center">
-                        <div class="text-center">
-                            <div class="text-4xl mb-4">⏳</div>
-                            <p class="${isDark ? 'text-white' : 'text-gray-800'}">กำลังโหลดข้อมูล...</p>
-                        </div>
-                    </div>
-                `;
-                return;
-            }
-            
             if (!app.isLoggedIn) {
                 root.innerHTML = `
                     <div class="${isDark ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-600 to-blue-800'} min-h-screen flex items-center justify-center p-4">
@@ -730,7 +667,7 @@
         };
 
         if (app.darkMode) document.documentElement.classList.add('dark');
-        render();
+        loadData();
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && app.sidebarOpen) {
