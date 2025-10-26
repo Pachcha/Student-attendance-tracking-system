@@ -19,11 +19,11 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
     <script>
-        // ⚠️ สำคัญ: แทนค่า Firebase Config ด้วยค่าจริงจากโปรเจค Firebase ของคุณ
-        // ไปที่ Firebase Console > Project Settings > Your apps > Firebase SDK snippet
+        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBrxqiawo1PCK4lrU6-gYgmOE74ujXdPmQ",
             authDomain: "student-attendance-track-53618.firebaseapp.com",
+            databaseURL: "https://student-attendance-track-53618-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "student-attendance-track-53618",
             storageBucket: "student-attendance-track-53618.firebasestorage.app",
             messagingSenderId: "508348201605",
@@ -38,7 +38,7 @@
             console.log('Firebase initialized successfully');
         } catch (error) {
             console.error('Firebase initialization error:', error);
-            alert('⚠️ กรุณาตั้งค่า Firebase Config ในโค้ด (บรรทัดที่ 18-24)');
+            alert('⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ Firebase');
         }
 
         // App State
@@ -78,7 +78,9 @@
             newStudent: { code: '', name: '', nickname: '', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: '', group: 'ตามตาราง' },
             passwordForm: { old: '', new: '', confirm: '' },
             newUserForm: { username: '', password: '', name: '', role: 'teacher' },
-            loginForm: { username: '', password: '' }
+            loginForm: { username: '', password: '' },
+            editingStudent: null,
+            editForm: { code: '', name: '', nickname: '', disability: '', dorm: '', room: '', group: '' }
         };
 
         // ================== Firebase Functions ==================
@@ -91,8 +93,10 @@
                     batch.set(ref, student);
                 });
                 await batch.commit();
+                console.log('Students saved successfully');
             } catch (error) {
                 console.error('Error saving students:', error);
+                showToast('ไม่สามารถบันทึกข้อมูลนักเรียนได้', 'error');
             }
         };
 
@@ -101,7 +105,7 @@
                 app.loadingData = true;
                 render();
                 
-                const snapshot = await db.collection('students').get();
+                const snapshot = await db.collection('students').orderBy('code').get();
                 if (snapshot.empty) {
                     // ถ้าไม่มีข้อมูล ใช้ข้อมูลตัวอย่าง
                     app.students = [
@@ -165,6 +169,7 @@
                 render();
             } catch (error) {
                 console.error('Error loading attendance:', error);
+                showToast('ไม่สามารถโหลดข้อมูลการเช็คชื่อได้', 'error');
             }
         };
 
@@ -206,6 +211,7 @@
                 render();
             } catch (error) {
                 console.error('Error loading medications:', error);
+                showToast('ไม่สามารถโหลดข้อมูลการรับประทานยาได้', 'error');
             }
         };
 
@@ -241,6 +247,7 @@
                 render();
             } catch (error) {
                 console.error('Error loading health data:', error);
+                showToast('ไม่สามารถโหลดข้อมูลสุขภาพได้', 'error');
             }
         };
 
@@ -347,6 +354,12 @@
                 return;
             }
             
+            // ตรวจสอบรหัสซ้ำ
+            if (app.students.some(s => s.code === app.newStudent.code)) {
+                showToast('รหัสนักเรียนนี้มีอยู่แล้ว', 'error');
+                return;
+            }
+            
             const newId = app.students.length > 0 ? Math.max(...app.students.map(s => s.id)) + 1 : 1;
             const student = { ...app.newStudent, id: newId };
             app.students.push(student);
@@ -358,8 +371,44 @@
             render();
         };
 
+        const editStudent = (id) => {
+            const student = app.students.find(s => s.id === id);
+            if (student) {
+                app.editingStudent = id;
+                app.editForm = { ...student };
+                render();
+            }
+        };
+
+        const saveEditStudent = async () => {
+            if (!app.editForm.code || !app.editForm.name) {
+                showToast('กรุณากรอกรหัสและชื่อนักเรียน', 'error');
+                return;
+            }
+            
+            // ตรวจสอบรหัสซ้ำ (ยกเว้นตัวเอง)
+            if (app.students.some(s => s.code === app.editForm.code && s.id !== app.editingStudent)) {
+                showToast('รหัสนักเรียนนี้มีอยู่แล้ว', 'error');
+                return;
+            }
+            
+            const index = app.students.findIndex(s => s.id === app.editingStudent);
+            if (index !== -1) {
+                app.students[index] = { ...app.editForm };
+                await saveStudents();
+                app.editingStudent = null;
+                showToast('แก้ไขข้อมูลนักเรียนสำเร็จ');
+                render();
+            }
+        };
+
+        const cancelEdit = () => {
+            app.editingStudent = null;
+            render();
+        };
+
         const deleteStudent = async (id) => {
-            if (!confirm('ต้องการลบนักเรียนคนนี้หรือไม่?')) return;
+            if (!confirm('ต้องการลบนักเรียนคนนี้หรือไม่? ข้อมูลทั้งหมดจะถูกลบถาวร')) return;
             
             app.students = app.students.filter(s => s.id !== id);
             await saveStudents();
@@ -367,21 +416,38 @@
             // ลบข้อมูลที่เกี่ยวข้อง
             try {
                 await db.collection('students').doc(id.toString()).delete();
+                
+                // ลบข้อมูลการเช็คชื่อ
+                const attendanceSnapshot = await db.collection('attendance')
+                    .where('studentId', '==', id)
+                    .get();
+                const attendanceBatch = db.batch();
+                attendanceSnapshot.forEach(doc => attendanceBatch.delete(doc.ref));
+                await attendanceBatch.commit();
+                
+                // ลบข้อมูลยา
+                const medsSnapshot = await db.collection('medications')
+                    .where('studentId', '==', id)
+                    .get();
+                const medsBatch = db.batch();
+                medsSnapshot.forEach(doc => medsBatch.delete(doc.ref));
+                await medsBatch.commit();
+                
             } catch (error) {
-                console.error('Error deleting student:', error);
+                console.error('Error deleting student data:', error);
             }
             
-            showToast('ลบนักเรียนสำเร็จ');
+            showToast('ลบนักเรียนและข้อมูลที่เกี่ยวข้องสำเร็จ');
             render();
         };
 
         const exportToCSV = () => {
             const filtered = getFilteredStudents();
-            let csv = '\uFEFF รหัส,ชื่อ-สกุล,วันที่,เช้า-รับ,เช้า-ส่ง,เย็น-รับ,เย็น-ส่ง\n';
+            let csv = '\uFEFFรหัส,ชื่อ-สกุล,ชื่อเล่น,หอนอน,ห้อง,วันที่,เช้า-รับ,เช้า-ส่ง,เย็น-รับ,เย็น-ส่ง\n';
             filtered.forEach(s => {
                 const morning = app.attendance[s.id]?.morning || {};
                 const evening = app.attendance[s.id]?.evening || {};
-                csv += `${s.code},${s.name},${app.selectedDate},${morning.received ? 'ใช่' : '-'},${morning.sent ? 'ใช่' : '-'},${evening.received ? 'ใช่' : '-'},${evening.sent ? 'ใช่' : '-'}\n`;
+                csv += `${s.code},${s.name},${s.nickname},${s.dorm},${s.room},${app.selectedDate},${morning.received ? 'ใช่' : '-'},${morning.sent ? 'ใช่' : '-'},${evening.received ? 'ใช่' : '-'},${evening.sent ? 'ใช่' : '-'}\n`;
             });
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
@@ -393,6 +459,23 @@
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
             showToast('ส่งออกข้อมูลสำเร็จ');
+        };
+
+        const exportAllStudents = () => {
+            let csv = '\uFEFFรหัส,ชื่อ-สกุล,ชื่อเล่น,หอนอน,ห้อง,ความพิการ,กลุ่ม\n';
+            app.students.forEach(s => {
+                csv += `${s.code},${s.name},${s.nickname},${s.dorm},${s.room},${s.disability || '-'},${s.group}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = `all_students_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('ส่งออกรายชื่อนักเรียนสำเร็จ');
         };
 
         const getFilteredStudents = () => {
@@ -477,7 +560,109 @@
 
         const formatThaiDate = (dateStr) => {
             const date = new Date(dateStr + 'T00:00:00');
-            return new Intl.DateTimeFormat('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }).format(date);
+            return new Intl.DateTimeFormat('th-TH', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                weekday: 'long'
+            }).format(date);
+        };
+
+        const printReport = () => {
+            const filtered = getFilteredStudents();
+            const dailyStats = getDailyStats();
+            
+            let printContent = `
+                <html>
+                <head>
+                    <title>รายงานการเช็คชื่อ</title>
+                    <style>
+                        body { font-family: 'Sarabun', sans-serif; margin: 20px; }
+                        h1, h2 { text-align: center; }
+                        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                        th, td { border: 1px solid #000; padding: 8px; text-align: center; }
+                        th { background-color: #f0f0f0; }
+                        .header { margin-bottom: 30px; }
+                        .summary { margin: 20px 0; padding: 15px; background-color: #f9f9f9; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>${app.systemSettings.dormName}</h1>
+                        <h2>${app.systemSettings.schoolName}</h2>
+                        <p style="text-align:center">รายงานการเช็คชื่อประจำวันที่ ${formatThaiDate(app.selectedDate)}</p>
+                    </div>
+                    
+                    <div class="summary">
+                        <h3>สรุปภาพรวม</h3>
+                        <p>จำนวนนักเรียนทั้งหมด: ${dailyStats.total} คน</p>
+                        <p>เช้า - รับ: ${dailyStats.morningReceived} คน (${Math.round(dailyStats.morningReceived/dailyStats.total*100)}%)</p>
+                        <p>เช้า - ส่ง: ${dailyStats.morningSent} คน (${Math.round(dailyStats.morningSent/dailyStats.total*100)}%)</p>
+                        <p>เย็น - รับ: ${dailyStats.eveningReceived} คน (${Math.round(dailyStats.eveningReceived/dailyStats.total*100)}%)</p>
+                        <p>เย็น - ส่ง: ${dailyStats.eveningSent} คน (${Math.round(dailyStats.eveningSent/dailyStats.total*100)}%)</p>
+                    </div>
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ลำดับ</th>
+                                <th>รหัส</th>
+                                <th>ชื่อ-สกุล</th>
+                                <th>หอนอน</th>
+                                <th colspan="2">เช้า</th>
+                                <th colspan="2">เย็น</th>
+                            </tr>
+                            <tr>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th>รับ</th>
+                                <th>ส่ง</th>
+                                <th>รับ</th>
+                                <th>ส่ง</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            filtered.forEach((s, index) => {
+                const morning = app.attendance[s.id]?.morning || {};
+                const evening = app.attendance[s.id]?.evening || {};
+                printContent += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${s.code}</td>
+                        <td style="text-align:left">${s.name}</td>
+                        <td style="text-align:left">${s.dorm}</td>
+                        <td>${morning.received ? '✓' : '-'}</td>
+                        <td>${morning.sent ? '✓' : '-'}</td>
+                        <td>${evening.received ? '✓' : '-'}</td>
+                        <td>${evening.sent ? '✓' : '-'}</td>
+                    </tr>
+                `;
+            });
+            
+            printContent += `
+                        </tbody>
+                    </table>
+                    
+                    <div style="margin-top: 50px;">
+                        <p>ลงชื่อ .................................. ผู้บันทึก</p>
+                        <p style="margin-left: 50px">(${app.currentUser.name})</p>
+                        <p>วันที่ ${formatThaiDate(app.selectedDate)}</p>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            const printWindow = window.open('', '', 'width=800,height=600');
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+            }, 250);
         };
 
         // ================== Render Functions ==================
@@ -485,20 +670,51 @@
         const renderAttendancePage = () => {
             const isDark = app.darkMode;
             const filtered = getFilteredStudents();
+            const dailyStats = getDailyStats();
+            
             return `
                 <div class="space-y-6">
-                    <div class="flex justify-between items-center">
-                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">✓ เช็คชื่อ</h2>
-                        <button onclick="exportToCSV();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">📥 ส่งออก CSV</button>
+                    <div class="flex flex-wrap justify-between items-center gap-4">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">✓ เช็คชื่อ</h2>
+                        <div class="flex gap-2">
+                            <button onclick="printReport();" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2">
+                                🖨️ พิมพ์รายงาน
+                            </button>
+                            <button onclick="exportToCSV();" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                                📥 ส่งออก CSV
+                            </button>
+                        </div>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance(); loadMedications(); loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
-                            <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance(); loadMedications(); loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                            <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
                                 ${app.dormitories.map(d => `<option ${app.selectedDorm === d ? 'selected' : ''}>${d}</option>`).join('')}
                             </select>
-                            <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <input type="text" placeholder="ค้นหารหัส ชื่อ หรือชื่อเล่น..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                            <div class="${isDark ? 'bg-gray-700 text-white' : 'bg-blue-50 text-blue-800'} px-4 py-2 rounded-lg flex items-center justify-center font-bold">
+                                ทั้งหมด: ${filtered.length} คน
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div class="${isDark ? 'bg-amber-600' : 'bg-amber-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-amber-100' : 'text-amber-700'} text-xs">เช้า - รับ</p>
+                                <p class="${isDark ? 'text-white' : 'text-amber-900'} text-xl font-bold">${dailyStats.morningReceived}/${dailyStats.total}</p>
+                            </div>
+                            <div class="${isDark ? 'bg-orange-600' : 'bg-orange-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-orange-100' : 'text-orange-700'} text-xs">เช้า - ส่ง</p>
+                                <p class="${isDark ? 'text-white' : 'text-orange-900'} text-xl font-bold">${dailyStats.morningSent}/${dailyStats.total}</p>
+                            </div>
+                            <div class="${isDark ? 'bg-blue-600' : 'bg-blue-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs">เย็น - รับ</p>
+                                <p class="${isDark ? 'text-white' : 'text-blue-900'} text-xl font-bold">${dailyStats.eveningReceived}/${dailyStats.total}</p>
+                            </div>
+                            <div class="${isDark ? 'bg-cyan-600' : 'bg-cyan-100'} rounded-lg p-3">
+                                <p class="${isDark ? 'text-cyan-100' : 'text-cyan-700'} text-xs">เย็น - ส่ง</p>
+                                <p class="${isDark ? 'text-white' : 'text-cyan-900'} text-xl font-bold">${dailyStats.eveningSent}/${dailyStats.total}</p>
+                            </div>
                         </div>
                     </div>
 
@@ -513,38 +729,42 @@
                                 <table class="w-full text-sm">
                                     <thead>
                                         <tr class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} border-b-2">
+                                            <th class="px-3 py-3 text-left font-semibold">ลำดับ</th>
                                             <th class="px-3 py-3 text-left font-semibold">รหัส</th>
                                             <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
+                                            <th class="px-3 py-3 text-left font-semibold">ชื่อเล่น</th>
                                             <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
                                             <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
                                         </tr>
                                         <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
-                                            <th colspan="2"></th>
-                                            <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
-                                            <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
-                                            <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
-                                            <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
+                                            <th colspan="4"></th>
+                                            <th class="px-3 py-2 text-center text-xs bg-amber-400">✓ รับ</th>
+                                            <th class="px-3 py-2 text-center text-xs bg-amber-400">✓ ส่ง</th>
+                                            <th class="px-3 py-2 text-center text-xs bg-blue-400">✓ รับ</th>
+                                            <th class="px-3 py-2 text-center text-xs bg-blue-400">✓ ส่ง</th>
                                         </tr>
                                     </thead>
                                     <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
-                                        ${filtered.map(s => {
+                                        ${filtered.map((s, index) => {
                                             const morning = app.attendance[s.id]?.morning || {};
                                             const evening = app.attendance[s.id]?.evening || {};
                                             return `
-                                                <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
-                                                    <td class="px-3 py-3">${s.code}</td>
+                                                <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-blue-50'} transition-colors">
+                                                    <td class="px-3 py-3 text-center">${index + 1}</td>
+                                                    <td class="px-3 py-3 font-mono">${s.code}</td>
                                                     <td class="px-3 py-3 font-medium">${s.name}</td>
-                                                    <td class="px-3 py-3 text-center">
-                                                        <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'received', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    <td class="px-3 py-3 text-gray-600">${s.nickname}</td>
+                                                    <td class="px-3 py-3 text-center bg-amber-50">
+                                                        <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'received', this.checked);" class="w-5 h-5 cursor-pointer accent-amber-500" />
                                                     </td>
-                                                    <td class="px-3 py-3 text-center">
-                                                        <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'sent', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    <td class="px-3 py-3 text-center bg-amber-50">
+                                                        <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'sent', this.checked);" class="w-5 h-5 cursor-pointer accent-amber-500" />
                                                     </td>
-                                                    <td class="px-3 py-3 text-center">
-                                                        <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'received', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    <td class="px-3 py-3 text-center bg-blue-50">
+                                                        <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'received', this.checked);" class="w-5 h-5 cursor-pointer accent-blue-500" />
                                                     </td>
-                                                    <td class="px-3 py-3 text-center">
-                                                        <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'sent', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    <td class="px-3 py-3 text-center bg-blue-50">
+                                                        <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'sent', this.checked);" class="w-5 h-5 cursor-pointer accent-blue-500" />
                                                     </td>
                                                 </tr>
                                             `;
@@ -563,28 +783,43 @@
             const filtered = getFilteredStudents();
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">💊 บันทึกการรับประทานยา</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">💊 บันทึกการรับประทานยา</h2>
+                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm">
+                            ${formatThaiDate(app.selectedDate)}
+                        </p>
+                    </div>
+
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadMedications();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full mb-4 px-4 py-2 border rounded-lg" />
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadMedications();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" />
+                            <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500">
+                                ${app.dormitories.map(d => `<option ${app.selectedDorm === d ? 'selected' : ''}>${d}</option>`).join('')}
+                            </select>
+                            <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" />
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden">
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="${isDark ? 'bg-gray-700' : 'bg-purple-100'} border-b-2">
-                                        <th class="px-4 py-3 text-left font-semibold">รหัส</th>
-                                        <th class="px-4 py-3 text-left font-semibold">ชื่อ-สกุล</th>
-                                        ${app.medicationTimes.map(time => `<th class="px-4 py-3 text-center font-semibold text-sm">${time}</th>`).join('')}
+                                        <th class="px-4 py-3 text-left font-semibold sticky left-0 ${isDark ? 'bg-gray-700' : 'bg-purple-100'}">รหัส</th>
+                                        <th class="px-4 py-3 text-left font-semibold sticky left-16 ${isDark ? 'bg-gray-700' : 'bg-purple-100'}">ชื่อ-สกุล</th>
+                                        ${app.medicationTimes.map(time => `<th class="px-4 py-3 text-center font-semibold text-sm whitespace-nowrap">${time}</th>`).join('')}
                                     </tr>
                                 </thead>
                                 <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
                                     ${filtered.map(s => `
-                                        <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
-                                            <td class="px-4 py-3">${s.code}</td>
-                                            <td class="px-4 py-3 font-medium">${s.name}</td>
+                                        <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-purple-50'} transition-colors">
+                                            <td class="px-4 py-3 font-mono sticky left-0 ${isDark ? 'bg-gray-800' : 'bg-white'}">${s.code}</td>
+                                            <td class="px-4 py-3 font-medium sticky left-16 ${isDark ? 'bg-gray-800' : 'bg-white'}">${s.name}</td>
                                             ${app.medicationTimes.map(time => {
                                                 const taken = app.medications[s.id]?.[time]?.taken || false;
                                                 return `
                                                     <td class="px-4 py-3 text-center">
-                                                        <button onclick="updateMedication(${s.id}, '${time}', ${!taken});" class="${taken ? 'bg-purple-500 text-white' : isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} w-8 h-8 rounded-lg transition-colors">
+                                                        <button onclick="updateMedication(${s.id}, '${time}', ${!taken});" class="${taken ? 'bg-purple-500 text-white shadow-lg scale-110' : isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} w-10 h-10 rounded-lg transition-all transform hover:scale-105">
                                                             ${taken ? '✓' : ''}
                                                         </button>
                                                     </td>
@@ -606,29 +841,45 @@
             
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">📝 บันทึกสุขภาพ</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">📝 บันทึกสุขภาพ</h2>
+                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm">
+                            ${formatThaiDate(app.selectedDate)}
+                        </p>
+                    </div>
                     
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">เลือกวันที่</label>
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full md:w-64 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" />
                     </div>
 
                     ${dormList.map((dorm, index) => {
                         const dormStudents = app.students.filter(s => s.dorm === dorm);
                         const dormHealth = app.healthData[dorm] || {};
                         return `
-                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-l-4 border-blue-500">
-                                <div class="flex justify-between items-start mb-4">
-                                    <h3 class="${isDark ? 'text-white' : 'text-gray-900'} font-bold text-lg">🏘️ ${dorm} (${dormStudents.length} คน)</h3>
-                                    <button onclick="updateHealth('${dorm}', document.getElementById('health_textarea_${index}').value);" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ บันทึก</button>
+                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-l-4 border-green-500">
+                                <div class="flex justify-between items-start mb-4 flex-wrap gap-4">
+                                    <div>
+                                        <h3 class="${isDark ? 'text-white' : 'text-gray-900'} font-bold text-lg">🏘️ ${dorm}</h3>
+                                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm mt-1">จำนวนนักเรียน: ${dormStudents.length} คน</p>
+                                    </div>
+                                    <button onclick="updateHealth('${dorm}', document.getElementById('health_textarea_${index}').value);" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-md hover:shadow-lg transition-all">
+                                        ✓ บันทึก
+                                    </button>
                                 </div>
                                 <textarea 
                                     id="health_textarea_${index}"
-                                    placeholder="บันทึกสุขภาพของหอนอน เช่น สถานะสุขภาพ การจ่ายยา พฤติกรรม แนวทางพัฒนา ฯลฯ"
-                                    class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300 bg-white'} w-full px-4 py-3 border rounded-lg h-28 focus:ring-2 focus:ring-blue-500"
+                                    placeholder="บันทึกสุขภาพของหอนอน เช่น สถานะสุขภาพ การจ่ายยา พฤติกรรม แนวทางพัฒนา ปัญหาที่พบ ฯลฯ"
+                                    class="${isDark ? 'bg-gray-700 text-white border-gray-600 placeholder-gray-500' : 'border-gray-300 bg-white placeholder-gray-400'} w-full px-4 py-3 border rounded-lg h-32 focus:ring-2 focus:ring-green-500 resize-none"
                                 >${dormHealth.notes || ''}</textarea>
-                                <p class="${isDark ? 'text-gray-400' : 'text-gray-500'} text-xs mt-2">
-                                    อัปเดตเมื่อ: ${dormHealth.timestamp ? new Date(dormHealth.timestamp).toLocaleString('th-TH') : 'ยังไม่มีข้อมูล'}
+                                <p class="${isDark ? 'text-gray-400' : 'text-gray-500'} text-xs mt-3 flex items-center gap-2">
+                                    🕐 อัปเดตล่าสุด: ${dormHealth.timestamp ? new Date(dormHealth.timestamp).toLocaleString('th-TH', { 
+                                        year: 'numeric', 
+                                        month: 'long', 
+                                        day: 'numeric', 
+                                        hour: '2-digit', 
+                                        minute: '2-digit' 
+                                    }) : 'ยังไม่มีข้อมูล'}
                                 </p>
                             </div>
                         `;
@@ -647,96 +898,139 @@
 
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">📊 สถิติ</h2>
+                    <div class="flex justify-between items-center">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">📊 สถิติและรายงาน</h2>
+                        <button onclick="printReport();" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-md">
+                            🖨️ พิมพ์รายงาน
+                        </button>
+                    </div>
                     
-                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-4">
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-3">เลือกวันที่:</label>
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full md:w-64 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                        <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} mt-2 text-sm">${formatThaiDate(app.selectedDate)}</p>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-purple-500">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">📈 สรุปรวมทั้งหมด</h3>
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-6 text-lg flex items-center gap-2">
+                            📈 สรุปรวมทั้งหมด
+                        </h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
                                 <div class="flex items-center justify-between">
                                     <div>
                                         <p class="text-amber-100 text-sm">เช้า - รับ</p>
-                                        <p class="text-3xl font-bold mt-2">${dailyStats.morningReceived}</p>
-                                        <p class="text-amber-200 text-xs mt-1">${morningPercent}%</p>
+                                        <p class="text-4xl font-bold mt-2">${dailyStats.morningReceived}</p>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <div class="w-full bg-amber-400 rounded-full h-2">
+                                                <div class="bg-white rounded-full h-2" style="width: ${morningPercent}%"></div>
+                                            </div>
+                                            <span class="text-amber-200 text-sm">${morningPercent}%</span>
+                                        </div>
                                     </div>
-                                    <div class="text-5xl opacity-30">📥</div>
+                                    <div class="text-6xl opacity-20">📥</div>
                                 </div>
                             </div>
 
-                            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
                                 <div class="flex items-center justify-between">
                                     <div>
                                         <p class="text-orange-100 text-sm">เช้า - ส่ง</p>
-                                        <p class="text-3xl font-bold mt-2">${dailyStats.morningSent}</p>
-                                        <p class="text-orange-200 text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.morningSent / dailyStats.total) * 100) : 0}%</p>
+                                        <p class="text-4xl font-bold mt-2">${dailyStats.morningSent}</p>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <div class="w-full bg-orange-400 rounded-full h-2">
+                                                <div class="bg-white rounded-full h-2" style="width: ${dailyStats.total > 0 ? Math.round((dailyStats.morningSent / dailyStats.total) * 100) : 0}%"></div>
+                                            </div>
+                                            <span class="text-orange-200 text-sm">${dailyStats.total > 0 ? Math.round((dailyStats.morningSent / dailyStats.total) * 100) : 0}%</span>
+                                        </div>
                                     </div>
-                                    <div class="text-5xl opacity-30">📤</div>
+                                    <div class="text-6xl opacity-20">📤</div>
                                 </div>
                             </div>
 
-                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
                                 <div class="flex items-center justify-between">
                                     <div>
                                         <p class="text-blue-100 text-sm">เย็น - รับ</p>
-                                        <p class="text-3xl font-bold mt-2">${dailyStats.eveningReceived}</p>
-                                        <p class="text-blue-200 text-xs mt-1">${eveningPercent}%</p>
+                                        <p class="text-4xl font-bold mt-2">${dailyStats.eveningReceived}</p>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <div class="w-full bg-blue-400 rounded-full h-2">
+                                                <div class="bg-white rounded-full h-2" style="width: ${eveningPercent}%"></div>
+                                            </div>
+                                            <span class="text-blue-200 text-sm">${eveningPercent}%</span>
+                                        </div>
                                     </div>
-                                    <div class="text-5xl opacity-30">📥</div>
+                                    <div class="text-6xl opacity-20">📥</div>
                                 </div>
                             </div>
 
-                            <div class="bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl p-6 text-white shadow-lg transform hover:scale-105 transition-transform">
                                 <div class="flex items-center justify-between">
                                     <div>
                                         <p class="text-cyan-100 text-sm">เย็น - ส่ง</p>
-                                        <p class="text-3xl font-bold mt-2">${dailyStats.eveningSent}</p>
-                                        <p class="text-cyan-200 text-xs mt-1">${dailyStats.total > 0 ? Math.round((dailyStats.eveningSent / dailyStats.total) * 100) : 0}%</p>
+                                        <p class="text-4xl font-bold mt-2">${dailyStats.eveningSent}</p>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <div class="w-full bg-cyan-400 rounded-full h-2">
+                                                <div class="bg-white rounded-full h-2" style="width: ${dailyStats.total > 0 ? Math.round((dailyStats.eveningSent / dailyStats.total) * 100) : 0}%"></div>
+                                            </div>
+                                            <span class="text-cyan-200 text-sm">${dailyStats.total > 0 ? Math.round((dailyStats.eveningSent / dailyStats.total) * 100) : 0}%</span>
+                                        </div>
                                     </div>
-                                    <div class="text-5xl opacity-30">📤</div>
+                                    <div class="text-6xl opacity-20">📤</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">👥 จำนวนนักเรียนแต่ละหอนอน</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            ${Object.entries(dormStats).map(([dorm, count]) => `
-                                <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} rounded-lg p-4 border-l-4 border-blue-500">
-                                    <p class="${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm">${dorm}</p>
-                                    <p class="${isDark ? 'text-white' : 'text-gray-900'} text-2xl font-bold mt-1">${count} คน</p>
-                                </div>
-                            `).join('')}
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-6 text-lg flex items-center gap-2">
+                            👥 จำนวนนักเรียนแต่ละหอนอน
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            ${Object.entries(dormStats).map(([dorm, count]) => {
+                                const maxCount = Math.max(...Object.values(dormStats));
+                                const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                return `
+                                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} rounded-lg p-4 border-l-4 border-blue-500 transform hover:scale-105 transition-transform">
+                                        <p class="${isDark ? 'text-gray-300' : 'text-gray-600'} text-sm mb-2">${dorm}</p>
+                                        <p class="${isDark ? 'text-white' : 'text-gray-900'} text-3xl font-bold">${count} คน</p>
+                                        <div class="mt-3 w-full bg-blue-200 rounded-full h-2">
+                                            <div class="bg-blue-600 rounded-full h-2 transition-all" style="width: ${percentage}%"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-green-500">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">🏘️ สรุปแยกเป็นเรือนนอน (${formatThaiDate(app.selectedDate)})</h3>
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-6 text-lg flex items-center gap-2">
+                            🏘️ สรุปแยกเป็นเรือนนอน <span class="text-sm font-normal">(${formatThaiDate(app.selectedDate)})</span>
+                        </h3>
                         <div class="space-y-4">
                             ${Object.entries(dormDailyStats).map(([dorm, stats]) => `
-                                <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-green-50 to-green-100'} rounded-lg p-4 border-l-4 border-green-500">
-                                    <p class="${isDark ? 'text-white' : 'text-gray-900'} font-bold mb-3">${dorm} (รวม ${stats.total} คน)</p>
+                                <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-green-50 to-green-100'} rounded-lg p-5 border-l-4 border-green-500">
+                                    <p class="${isDark ? 'text-white' : 'text-gray-900'} font-bold mb-4 text-lg">${dorm} (รวม ${stats.total} คน)</p>
                                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                                        <div class="${isDark ? 'bg-green-600' : 'bg-green-200'} rounded p-3">
-                                            <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs">✓ มา</p>
+                                        <div class="${isDark ? 'bg-green-600' : 'bg-green-200'} rounded-lg p-4 text-center">
+                                            <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs mb-2">✓ มา</p>
                                             <p class="${isDark ? 'text-white' : 'text-green-900'} text-2xl font-bold">${stats.present}</p>
+                                            <p class="${isDark ? 'text-green-200' : 'text-green-600'} text-xs mt-1">${stats.total > 0 ? Math.round((stats.present/stats.total)*100) : 0}%</p>
                                         </div>
-                                        <div class="${isDark ? 'bg-blue-600' : 'bg-blue-200'} rounded p-3">
-                                            <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs">✓ กลับบ้าน</p>
+                                        <div class="${isDark ? 'bg-blue-600' : 'bg-blue-200'} rounded-lg p-4 text-center">
+                                            <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs mb-2">✓ กลับบ้าน</p>
                                             <p class="${isDark ? 'text-white' : 'text-blue-900'} text-2xl font-bold">${stats.returned}</p>
+                                            <p class="${isDark ? 'text-blue-200' : 'text-blue-600'} text-xs mt-1">${stats.total > 0 ? Math.round((stats.returned/stats.total)*100) : 0}%</p>
                                         </div>
-                                        <div class="${isDark ? 'bg-yellow-600' : 'bg-yellow-200'} rounded p-3">
-                                            <p class="${isDark ? 'text-yellow-100' : 'text-yellow-700'} text-xs">✓ อยู่หอ</p>
+                                        <div class="${isDark ? 'bg-yellow-600' : 'bg-yellow-200'} rounded-lg p-4 text-center">
+                                            <p class="${isDark ? 'text-yellow-100' : 'text-yellow-700'} text-xs mb-2">✓ อยู่หอ</p>
                                             <p class="${isDark ? 'text-white' : 'text-yellow-900'} text-2xl font-bold">${stats.leftInDorm}</p>
+                                            <p class="${isDark ? 'text-yellow-200' : 'text-yellow-600'} text-xs mt-1">${stats.total > 0 ? Math.round((stats.leftInDorm/stats.total)*100) : 0}%</p>
                                         </div>
-                                        <div class="${isDark ? 'bg-red-600' : 'bg-red-200'} rounded p-3">
-                                            <p class="${isDark ? 'text-red-100' : 'text-red-700'} text-xs">✕ ไม่มา</p>
+                                        <div class="${isDark ? 'bg-red-600' : 'bg-red-200'} rounded-lg p-4 text-center">
+                                            <p class="${isDark ? 'text-red-100' : 'text-red-700'} text-xs mb-2">✕ ไม่มา</p>
                                             <p class="${isDark ? 'text-white' : 'text-red-900'} text-2xl font-bold">${stats.absent}</p>
+                                            <p class="${isDark ? 'text-red-200' : 'text-red-600'} text-xs mt-1">${stats.total > 0 ? Math.round((stats.absent/stats.total)*100) : 0}%</p>
                                         </div>
                                     </div>
                                 </div>
@@ -751,47 +1045,98 @@
             const isDark = app.darkMode;
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">👥 จัดการนักเรียน</h2>
+                    <div class="flex justify-between items-center flex-wrap gap-4">
+                        <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">👥 จัดการนักเรียน</h2>
+                        <button onclick="exportAllStudents();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                            📥 ส่งออกรายชื่อทั้งหมด
+                        </button>
+                    </div>
                     
-                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">➕ เพิ่มนักเรียนใหม่</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="text" placeholder="รหัสนักเรียน *" value="${app.newStudent.code}" oninput="app.newStudent.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
-                            <input type="text" placeholder="ชื่อ-สกุล *" value="${app.newStudent.name}" oninput="app.newStudent.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
-                            <input type="text" placeholder="ชื่อเล่น" value="${app.newStudent.nickname}" oninput="app.newStudent.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
-                            <select onchange="app.newStudent.dorm = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg">
-                                ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.newStudent.dorm === d ? 'selected' : ''}>${d}</option>`).join('')}
-                            </select>
-                            <input type="text" placeholder="หมายเลขห้อง" value="${app.newStudent.room}" oninput="app.newStudent.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
-                            <input type="text" placeholder="ความพิการ (ถ้ามี)" value="${app.newStudent.disability}" oninput="app.newStudent.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-green-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            ➕ เพิ่มนักเรียนใหม่
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสนักเรียน *</label>
+                                <input type="text" placeholder="เช่น 1825" value="${app.newStudent.code}" oninput="app.newStudent.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อ-สกุล *</label>
+                                <input type="text" placeholder="เด็กหญิง..." value="${app.newStudent.name}" oninput="app.newStudent.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อเล่น</label>
+                                <input type="text" placeholder="ชื่อเล่น" value="${app.newStudent.nickname}" oninput="app.newStudent.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หอนอน *</label>
+                                <select onchange="app.newStudent.dorm = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">
+                                    ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.newStudent.dorm === d ? 'selected' : ''}>${d}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หมายเลขห้อง</label>
+                                <input type="text" placeholder="ห้อง 101" value="${app.newStudent.room}" oninput="app.newStudent.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <div>
+                                <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ความพิการ (ถ้ามี)</label>
+                                <input type="text" placeholder="ระบุ (ถ้ามี)" value="${app.newStudent.disability}" oninput="app.newStudent.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" />
+                            </div>
                         </div>
-                        <button onclick="addStudent();" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ เพิ่มนักเรียน</button>
+                        <button onclick="addStudent();" class="mt-4 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-md hover:shadow-lg transition-all">
+                            ✓ เพิ่มนักเรียน
+                        </button>
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">📋 รายชื่อนักเรียนทั้งหมด (${app.students.length} คน)</h3>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold flex items-center gap-2">
+                                📋 รายชื่อนักเรียนทั้งหมด 
+                                <span class="${isDark ? 'bg-blue-600' : 'bg-blue-100 text-blue-800'} px-3 py-1 rounded-full text-sm">
+                                    ${app.students.length} คน
+                                </span>
+                            </h3>
+                            <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 w-64" />
+                        </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="${isDark ? 'bg-gray-700' : 'bg-blue-100'} border-b-2">
+                                        <th class="px-4 py-3 text-left font-semibold">ลำดับ</th>
                                         <th class="px-4 py-3 text-left font-semibold">รหัส</th>
                                         <th class="px-4 py-3 text-left font-semibold">ชื่อ-สกุล</th>
                                         <th class="px-4 py-3 text-left font-semibold">ชื่อเล่น</th>
                                         <th class="px-4 py-3 text-left font-semibold">หอนอน</th>
                                         <th class="px-4 py-3 text-left font-semibold">ห้อง</th>
+                                        <th class="px-4 py-3 text-left font-semibold">ความพิการ</th>
                                         <th class="px-4 py-3 text-center font-semibold">จัดการ</th>
                                     </tr>
                                 </thead>
                                 <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
-                                    ${app.students.map(s => `
-                                        <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
-                                            <td class="px-4 py-3">${s.code}</td>
+                                    ${app.students.filter(student => {
+                                        const matchesSearch = student.name.toLowerCase().includes(app.searchTerm.toLowerCase()) ||
+                                                             student.nickname.toLowerCase().includes(app.searchTerm.toLowerCase()) ||
+                                                             student.code.includes(app.searchTerm);
+                                        return matchesSearch;
+                                    }).map((s, index) => `
+                                        <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-blue-50'} transition-colors">
+                                            <td class="px-4 py-3 text-center">${index + 1}</td>
+                                            <td class="px-4 py-3 font-mono">${s.code}</td>
                                             <td class="px-4 py-3 font-medium">${s.name}</td>
                                             <td class="px-4 py-3">${s.nickname}</td>
                                             <td class="px-4 py-3">${s.dorm}</td>
                                             <td class="px-4 py-3">${s.room}</td>
+                                            <td class="px-4 py-3">${s.disability || '-'}</td>
                                             <td class="px-4 py-3 text-center">
-                                                <button onclick="deleteStudent(${s.id});" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs">🗑️ ลบ</button>
+                                                <div class="flex gap-2 justify-center">
+                                                    <button onclick="editStudent(${s.id});" class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium">
+                                                        ✏️ แก้ไข
+                                                    </button>
+                                                    <button onclick="deleteStudent(${s.id});" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-medium">
+                                                        🗑️ ลบ
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     `).join('')}
@@ -799,6 +1144,50 @@
                             </table>
                         </div>
                     </div>
+
+                    ${app.editingStudent ? `
+                        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                            <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-2xl p-6 w-full max-w-2xl">
+                                <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-xl">✏️ แก้ไขข้อมูลนักเรียน</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสนักเรียน *</label>
+                                        <input type="text" value="${app.editForm.code}" oninput="app.editForm.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อ-สกุล *</label>
+                                        <input type="text" value="${app.editForm.name}" oninput="app.editForm.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อเล่น</label>
+                                        <input type="text" value="${app.editForm.nickname}" oninput="app.editForm.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หอนอน *</label>
+                                        <select onchange="app.editForm.dorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg">
+                                            ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.editForm.dorm === d ? 'selected' : ''}>${d}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">หมายเลขห้อง</label>
+                                        <input type="text" value="${app.editForm.room}" oninput="app.editForm.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ความพิการ</label>
+                                        <input type="text" value="${app.editForm.disability}" oninput="app.editForm.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                    </div>
+                                </div>
+                                <div class="flex gap-3 mt-6">
+                                    <button onclick="saveEditStudent();" class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                                        ✓ บันทึก
+                                    </button>
+                                    <button onclick="cancelEdit();" class="flex-1 px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-medium">
+                                        ✕ ยกเลิก
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         };
@@ -807,36 +1196,70 @@
             const isDark = app.darkMode;
             return `
                 <div class="space-y-6">
-                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">⚙️ ตั้งค่าระบบ</h2>
+                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-xl font-bold">⚙️ ตั้งค่าระบบ</h2>
 
-                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">ตั้งค่าระบบ</h3>
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-blue-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            🏫 ตั้งค่าข้อมูลระบบ
+                        </h3>
                         <div class="space-y-4">
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อโรงเรียน</label>
-                                <input type="text" value="${app.systemSettings.schoolName}" oninput="app.systemSettings.schoolName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                <input type="text" value="${app.systemSettings.schoolName}" oninput="app.systemSettings.schoolName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อระบบ</label>
-                                <input type="text" value="${app.systemSettings.dormName}" oninput="app.systemSettings.dormName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                <input type="text" value="${app.systemSettings.dormName}" oninput="app.systemSettings.dormName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
                             </div>
-                            <button onclick="saveSystemSettings();" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">✓ บันทึกการตั้งค่า</button>
+                            <button onclick="saveSystemSettings();" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md hover:shadow-lg transition-all">
+                                ✓ บันทึกการตั้งค่า
+                            </button>
                         </div>
                     </div>
 
-                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} rounded-xl shadow-md p-6">
-                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">📋 ข้อมูลผู้ใช้ปัจจุบัน</h3>
-                        <div class="space-y-2 text-sm">
-                            <p><strong>ชื่อ:</strong> ${app.currentUser?.name}</p>
-                            <p><strong>ชื่อผู้ใช้:</strong> ${app.currentUser?.username}</p>
-                            <p><strong>บทบาท:</strong> ${app.currentUser?.role === 'admin' ? '👨‍💼 ผู้จัดการระบบ' : '👨‍🏫 ครูประจำหอ'}</p>
+                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            👤 ข้อมูลผู้ใช้ปัจจุบัน
+                        </h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex items-center gap-3">
+                                <span class="${isDark ? 'text-gray-400' : 'text-gray-600'}">ชื่อ:</span>
+                                <span class="${isDark ? 'text-white' : 'text-gray-900'} font-medium">${app.currentUser?.name}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="${isDark ? 'text-gray-400' : 'text-gray-600'}">ชื่อผู้ใช้:</span>
+                                <span class="${isDark ? 'text-white' : 'text-gray-900'} font-medium">${app.currentUser?.username}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="${isDark ? 'text-gray-400' : 'text-gray-600'}">บทบาท:</span>
+                                <span class="${isDark ? 'bg-blue-600' : 'bg-blue-500'} text-white px-3 py-1 rounded-full text-xs font-medium">
+                                    ${app.currentUser?.role === 'admin' ? '👨‍💼 ผู้จัดการระบบ' : '👨‍🏫 ครูประจำหอ'}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="${isDark ? 'bg-yellow-900' : 'bg-yellow-50'} border ${isDark ? 'border-yellow-700' : 'border-yellow-200'} rounded-xl p-6">
-                        <h3 class="${isDark ? 'text-yellow-200' : 'text-yellow-800'} font-bold mb-3">⚠️ ข้อมูล Firebase</h3>
-                        <p class="${isDark ? 'text-yellow-300' : 'text-yellow-700'} text-sm mb-2">ระบบกำลังใช้ Firebase Firestore เก็บข้อมูล</p>
-                        <p class="${isDark ? 'text-yellow-300' : 'text-yellow-700'} text-xs">Project ID: ${firebaseConfig.projectId}</p>
+                    <div class="${isDark ? 'bg-green-900' : 'bg-green-50'} border ${isDark ? 'border-green-700' : 'border-green-200'} rounded-xl p-6">
+                        <h3 class="${isDark ? 'text-green-200' : 'text-green-800'} font-bold mb-3 flex items-center gap-2">
+                            ✅ ข้อมูล Firebase
+                        </h3>
+                        <div class="space-y-2 text-sm ${isDark ? 'text-green-300' : 'text-green-700'}">
+                            <p>✓ เชื่อมต่อ Firebase สำเร็จ</p>
+                            <p class="text-xs">Project: ${firebaseConfig.projectId}</p>
+                            <p class="text-xs mt-3">ข้อมูลทั้งหมดถูกบันทึกใน Cloud Database อัตโนมัติ</p>
+                        </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 flex items-center gap-2">
+                            ℹ️ เกี่ยวกับระบบ
+                        </h3>
+                        <div class="space-y-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}">
+                            <p>📌 ระบบจัดการหอนอน (Dormitory Management System)</p>
+                            <p>🏗️ เวอร์ชัน 2.0 - Firebase Edition</p>
+                            <p>🚀 รองรับ: เช็คชื่อ, บันทึกยา, บันทึกสุขภาพ, สถิติ, รายงาน</p>
+                            <p>💾 ข้อมูลถูกบันทึกแบบเรียลไทม์บน Cloud</p>
+                        </div>
                     </div>
                 </div>
             `;
@@ -851,26 +1274,30 @@
                     <div class="${isDark ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-600 to-blue-800'} min-h-screen flex items-center justify-center p-4">
                         <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-2xl p-8 w-full max-w-md">
                             <div class="text-center mb-8">
-                                <div class="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4">🏠</div>
+                                <div class="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-full flex items-center justify-center text-white text-4xl font-bold mx-auto mb-4 shadow-lg">
+                                    🏠
+                                </div>
                                 <h1 class="${isDark ? 'text-white' : 'text-gray-800'} text-3xl font-bold">ระบบหอนอน</h1>
                                 <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} mt-2">${app.systemSettings.schoolName}</p>
                             </div>
                             <div class="space-y-4">
                                 <div>
                                     <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อผู้ใช้</label>
-                                    <input type="text" placeholder="admin หรือ teacher" value="${app.loginForm.username}" oninput="app.loginForm.username = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                                    <input type="text" placeholder="admin หรือ teacher" value="${app.loginForm.username}" oninput="app.loginForm.username = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all" />
                                 </div>
                                 <div>
                                     <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสผ่าน</label>
-                                    <input type="password" placeholder="••••••••" value="${app.loginForm.password}" oninput="app.loginForm.password = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                                    <input type="password" placeholder="••••••••" value="${app.loginForm.password}" oninput="app.loginForm.password = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 transition-all" />
                                 </div>
                                 ${app.loginError ? `<div class="p-3 ${isDark ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'} border border-red-400 rounded-lg text-sm">${app.loginError}</div>` : ''}
-                                <button onclick="handleLogin();" class="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-bold transition-all">เข้าสู่ระบบ</button>
+                                <button onclick="handleLogin();" class="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-bold transition-all shadow-md hover:shadow-lg">
+                                    เข้าสู่ระบบ
+                                </button>
                             </div>
                             <div class="${isDark ? 'bg-gray-700 text-gray-300' : 'bg-blue-50 text-gray-700'} mt-6 p-4 rounded-lg text-sm">
-                                <p class="font-bold mb-2">บัญชีทดสอบ:</p>
-                                <p>👤 Admin: admin / admin123</p>
-                                <p>👨‍🏫 Teacher: teacher / teacher123</p>
+                                <p class="font-bold mb-2">🔐 บัญชีทดสอบ:</p>
+                                <p class="mb-1">👤 Admin: <code class="bg-gray-800 text-green-400 px-2 py-1 rounded">admin / admin123</code></p>
+                                <p>👨‍🏫 Teacher: <code class="bg-gray-800 text-green-400 px-2 py-1 rounded">teacher / teacher123</code></p>
                             </div>
                         </div>
                     </div>
@@ -889,11 +1316,11 @@
 
             root.innerHTML = `
                 <div class="flex h-screen ${isDark ? 'bg-gray-900' : 'bg-gray-100'}">
-                    <div class="${app.sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white transform transition-transform duration-300">
+                    <div class="${app.sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-600 to-blue-800 text-white transform transition-transform duration-300 shadow-2xl">
                         <div class="p-6 border-b border-blue-700">
                             <h2 class="text-xl font-bold">${app.systemSettings.dormName}</h2>
-                            <p class="text-xs text-blue-200">${app.systemSettings.schoolName}</p>
-                            <button onclick="app.sidebarOpen = false; render();" class="lg:hidden absolute top-6 right-6 hover:bg-blue-700 rounded p-1">✕</button>
+                            <p class="text-xs text-blue-200 mt-1">${app.systemSettings.schoolName}</p>
+                            <button onclick="app.sidebarOpen = false; render();" class="lg:hidden absolute top-6 right-6 hover:bg-blue-700 rounded p-1 transition-colors">✕</button>
                         </div>
                         <nav class="mt-6 px-3 space-y-2 overflow-y-auto" style="max-height: calc(100vh - 250px);">
                             ${['attendance', 'medication', 'health', 'statistics', 'students', 'settings'].map(page => {
@@ -906,26 +1333,28 @@
                                     settings: '⚙️ ตั้งค่า'
                                 };
                                 return `
-                                    <button onclick="app.currentPage = '${page}'; app.sidebarOpen = false; render();" class="w-full text-left px-4 py-3 rounded-lg transition-colors ${app.currentPage === page ? 'bg-blue-700' : 'text-blue-100 hover:bg-blue-700/50'}">
+                                    <button onclick="app.currentPage = '${page}'; app.sidebarOpen = false; render();" class="w-full text-left px-4 py-3 rounded-lg transition-all font-medium ${app.currentPage === page ? 'bg-blue-700 shadow-lg scale-105' : 'text-blue-100 hover:bg-blue-700/50 hover:scale-102'}">
                                         ${labels[page]}
                                     </button>
                                 `;
                             }).join('')}
                         </nav>
                         <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-blue-700 space-y-2">
-                            <button onclick="app.darkMode = !app.darkMode; render();" class="w-full flex items-center space-x-3 px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg">
-                                <span>${app.darkMode ? '☀️' : '🌙'}</span> <span>${app.darkMode ? 'Light' : 'Dark'}</span>
+                            <button onclick="app.darkMode = !app.darkMode; render();" class="w-full flex items-center space-x-3 px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg transition-colors">
+                                <span class="text-xl">${app.darkMode ? '☀️' : '🌙'}</span> 
+                                <span>${app.darkMode ? 'Light Mode' : 'Dark Mode'}</span>
                             </button>
-                            <button onclick="handleLogout(); render();" class="w-full flex items-center space-x-3 px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg">
-                                <span>🚪</span> <span>ออกจากระบบ</span>
+                            <button onclick="handleLogout();" class="w-full flex items-center space-x-3 px-4 py-3 text-blue-100 hover:bg-blue-700/50 rounded-lg transition-colors">
+                                <span class="text-xl">🚪</span> 
+                                <span>ออกจากระบบ</span>
                             </button>
                         </div>
                     </div>
 
                     <div class="flex-1 lg:ml-64 flex flex-col">
-                        <div class="${isDark ? 'bg-gray-800' : 'bg-white'} shadow-sm">
+                        <div class="${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white'} shadow-md border-b">
                             <div class="flex items-center justify-between px-6 py-4">
-                                <button onclick="app.sidebarOpen = true; render();" class="lg:hidden text-gray-600 dark:text-gray-400">☰</button>
+                                <button onclick="app.sidebarOpen = true; render();" class="lg:hidden ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'} text-2xl transition-colors">☰</button>
                                 <h1 class="${isDark ? 'text-white' : 'text-gray-800'} text-2xl font-bold">${app.systemSettings.dormName}</h1>
                                 <div class="text-right">
                                     <p class="${isDark ? 'text-white' : 'text-gray-900'} text-sm font-medium">${app.currentUser?.name}</p>
@@ -940,13 +1369,30 @@
                     </div>
 
                     ${app.toastMessage ? `
-                        <div class="${app.toastType === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-4 py-3 rounded-lg shadow-lg fixed top-4 right-4 z-50 flex items-center gap-2">
-                            ${app.toastType === 'success' ? '✓' : '✕'} ${app.toastMessage}
+                        <div class="${app.toastType === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-6 py-4 rounded-lg shadow-2xl fixed top-4 right-4 z-50 flex items-center gap-3 animate-slide-in">
+                            <span class="text-2xl">${app.toastType === 'success' ? '✓' : '✕'}</span>
+                            <span class="font-medium">${app.toastMessage}</span>
                         </div>
                     ` : ''}
 
-                    ${app.sidebarOpen ? `<div onclick="app.sidebarOpen = false; render();" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"></div>` : ''}
+                    ${app.sidebarOpen ? `<div onclick="app.sidebarOpen = false; render();" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden backdrop-blur-sm"></div>` : ''}
                 </div>
+
+                <style>
+                    @keyframes slide-in {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                    .animate-slide-in {
+                        animation: slide-in 0.3s ease-out;
+                    }
+                </style>
             `;
         };
 
@@ -956,9 +1402,15 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && app.sidebarOpen) {
-                app.sidebarOpen = false;
-                render();
+            if (e.key === 'Escape') {
+                if (app.sidebarOpen) {
+                    app.sidebarOpen = false;
+                    render();
+                }
+                if (app.editingStudent) {
+                    app.editingStudent = null;
+                    render();
+                }
             }
         });
     </script>
