@@ -14,7 +14,33 @@
 <body>
     <div id="app"></div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <script>
+        // ⚠️ สำคัญ: แทนค่า Firebase Config ด้วยค่าจริงจากโปรเจค Firebase ของคุณ
+        // ไปที่ Firebase Console > Project Settings > Your apps > Firebase SDK snippet
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrxqiawo1PCK4lrU6-gYgmOE74ujXdPmQ",
+            authDomain: "student-attendance-track-53618.firebaseapp.com",
+            projectId: "student-attendance-track-53618",
+            storageBucket: "student-attendance-track-53618.firebasestorage.app",
+            messagingSenderId: "508348201605",
+            appId: "1:508348201605:web:8614c619aa24932c0987ec"
+        };
+
+        // Initialize Firebase
+        let db;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+            alert('⚠️ กรุณาตั้งค่า Firebase Config ในโค้ด (บรรทัดที่ 18-24)');
+        }
+
         // App State
         const app = {
             isLoggedIn: false,
@@ -34,14 +60,7 @@
                 dormName: 'ระบบจัดการหอนอน'
             },
             
-            students: [
-                { id: 1, code: '1825', name: 'เด็กหญิงรักชีวา', nickname: 'ครับแครง', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: 'ห้อง 101', group: 'ตามตาราง' },
-                { id: 2, code: '1888', name: 'เด็กหญิงนิตรรปริวรรต', nickname: 'ข่าจางเป็น', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: 'ห้อง 102', group: 'ตามตาราง' },
-                { id: 3, code: '1891', name: 'เด็กหญิงทุกลอยรวัตร', nickname: 'สุดเล่า', disability: '', dorm: 'เรือนนอนกาซะลอง', room: 'ห้อง 201', group: 'ตามตาราง' },
-                { id: 4, code: '1901', name: 'เด็กหญิงโปรชิซา', nickname: 'มวลโบว์', disability: '', dorm: 'เรือนนอนกาซะลอง', room: 'ห้อง 202', group: 'ตามตาราง' },
-                { id: 5, code: '1835', name: 'เด็กหญิงนอมระวัตน์', nickname: 'สมชาญใหญ่', disability: '', dorm: 'เรือนนอนทองปาริชาต', room: 'ห้อง 301', group: 'ตามตาราง' }
-            ],
-            
+            students: [],
             attendance: {},
             medications: {},
             healthData: {},
@@ -62,37 +81,192 @@
             loginForm: { username: '', password: '' }
         };
 
-        const saveData = () => {
+        // ================== Firebase Functions ==================
+
+        const saveStudents = async () => {
             try {
-                localStorage.setItem('dorm_data', JSON.stringify({
-                    students: app.students,
-                    attendance: app.attendance,
-                    medications: app.medications,
-                    healthData: app.healthData,
-                    systemSettings: app.systemSettings,
-                    lastUpdated: new Date().toISOString()
-                }));
-            } catch (err) {
-                console.log('Local storage not available');
+                const batch = db.batch();
+                app.students.forEach(student => {
+                    const ref = db.collection('students').doc(student.id.toString());
+                    batch.set(ref, student);
+                });
+                await batch.commit();
+            } catch (error) {
+                console.error('Error saving students:', error);
             }
         };
 
-        const loadData = () => {
+        const loadStudents = async () => {
             try {
-                const data = localStorage.getItem('dorm_data');
-                if (data) {
-                    const parsed = JSON.parse(data);
-                    if (parsed.students) app.students = parsed.students;
-                    if (parsed.attendance) app.attendance = parsed.attendance;
-                    if (parsed.medications) app.medications = parsed.medications;
-                    if (parsed.healthData) app.healthData = parsed.healthData;
-                    if (parsed.systemSettings) app.systemSettings = parsed.systemSettings;
+                app.loadingData = true;
+                render();
+                
+                const snapshot = await db.collection('students').get();
+                if (snapshot.empty) {
+                    // ถ้าไม่มีข้อมูล ใช้ข้อมูลตัวอย่าง
+                    app.students = [
+                        { id: 1, code: '1825', name: 'เด็กหญิงรักชีวา', nickname: 'ครับแครง', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: 'ห้อง 101', group: 'ตามตาราง' },
+                        { id: 2, code: '1888', name: 'เด็กหญิงนิตรรปริวรรต', nickname: 'ข่าจางเป็น', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: 'ห้อง 102', group: 'ตามตาราง' },
+                        { id: 3, code: '1891', name: 'เด็กหญิงทุกลอยรวัตร', nickname: 'สุดเล่า', disability: '', dorm: 'เรือนนอนกาซะลอง', room: 'ห้อง 201', group: 'ตามตาราง' },
+                        { id: 4, code: '1901', name: 'เด็กหญิงโปรชิซา', nickname: 'มวลโบว์', disability: '', dorm: 'เรือนนอนกาซะลอง', room: 'ห้อง 202', group: 'ตามตาราง' },
+                        { id: 5, code: '1835', name: 'เด็กหญิงนอมระวัตน์', nickname: 'สมชาญใหญ่', disability: '', dorm: 'เรือนนอนทองปาริชาต', room: 'ห้อง 301', group: 'ตามตาราง' }
+                    ];
+                    await saveStudents();
+                } else {
+                    app.students = [];
+                    snapshot.forEach(doc => {
+                        app.students.push(doc.data());
+                    });
                 }
-            } catch (err) {
-                console.log('Could not load data from localStorage');
+            } catch (error) {
+                console.error('Error loading students:', error);
+                showToast('ไม่สามารถโหลดข้อมูลนักเรียนได้', 'error');
+            } finally {
+                app.loadingData = false;
+                render();
             }
-            render();
         };
+
+        const saveAttendance = async (studentId, session, data) => {
+            try {
+                const docId = `${studentId}_${app.selectedDate}_${session}`;
+                await db.collection('attendance').doc(docId).set({
+                    studentId,
+                    session,
+                    date: app.selectedDate,
+                    ...data,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (error) {
+                console.error('Error saving attendance:', error);
+                showToast('ไม่สามารถบันทึกการเช็คชื่อได้', 'error');
+            }
+        };
+
+        const loadAttendance = async () => {
+            try {
+                const snapshot = await db.collection('attendance')
+                    .where('date', '==', app.selectedDate)
+                    .get();
+                
+                app.attendance = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!app.attendance[data.studentId]) {
+                        app.attendance[data.studentId] = {};
+                    }
+                    app.attendance[data.studentId][data.session] = {
+                        received: data.received || false,
+                        sent: data.sent || false,
+                        date: data.date,
+                        timestamp: data.timestamp
+                    };
+                });
+                render();
+            } catch (error) {
+                console.error('Error loading attendance:', error);
+            }
+        };
+
+        const saveMedication = async (studentId, medTime, taken) => {
+            try {
+                const docId = `${studentId}_${app.selectedDate}_${medTime}`;
+                await db.collection('medications').doc(docId).set({
+                    studentId,
+                    medTime,
+                    taken,
+                    date: app.selectedDate,
+                    time: new Date().toLocaleTimeString('th-TH'),
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (error) {
+                console.error('Error saving medication:', error);
+                showToast('ไม่สามารถบันทึกการรับประทานยาได้', 'error');
+            }
+        };
+
+        const loadMedications = async () => {
+            try {
+                const snapshot = await db.collection('medications')
+                    .where('date', '==', app.selectedDate)
+                    .get();
+                
+                app.medications = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!app.medications[data.studentId]) {
+                        app.medications[data.studentId] = {};
+                    }
+                    app.medications[data.studentId][data.medTime] = {
+                        taken: data.taken,
+                        date: data.date,
+                        time: data.time
+                    };
+                });
+                render();
+            } catch (error) {
+                console.error('Error loading medications:', error);
+            }
+        };
+
+        const saveHealthData = async (dorm, notes) => {
+            try {
+                const docId = `${dorm}_${app.selectedDate}`;
+                await db.collection('healthData').doc(docId).set({
+                    dorm,
+                    notes,
+                    date: app.selectedDate,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (error) {
+                console.error('Error saving health data:', error);
+                showToast('ไม่สามารถบันทึกข้อมูลสุขภาพได้', 'error');
+            }
+        };
+
+        const loadHealthData = async () => {
+            try {
+                const snapshot = await db.collection('healthData')
+                    .where('date', '==', app.selectedDate)
+                    .get();
+                
+                app.healthData = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    app.healthData[data.dorm] = {
+                        notes: data.notes,
+                        timestamp: data.timestamp?.toDate().toISOString()
+                    };
+                });
+                render();
+            } catch (error) {
+                console.error('Error loading health data:', error);
+            }
+        };
+
+        const saveSystemSettings = async () => {
+            try {
+                await db.collection('settings').doc('system').set(app.systemSettings);
+                showToast('บันทึกการตั้งค่าสำเร็จ');
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                showToast('ไม่สามารถบันทึกการตั้งค่าได้', 'error');
+            }
+        };
+
+        const loadSystemSettings = async () => {
+            try {
+                const doc = await db.collection('settings').doc('system').get();
+                if (doc.exists) {
+                    app.systemSettings = doc.data();
+                    render();
+                }
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        };
+
+        // ================== App Functions ==================
 
         const showToast = (message, type = 'success') => {
             app.toastMessage = message;
@@ -116,8 +290,8 @@
                 app.currentUser = user;
                 app.loginError = '';
                 app.loginForm = { username: '', password: '' };
+                loadAllData();
                 showToast('เข้าสู่ระบบสำเร็จ');
-                render();
             } else {
                 app.loginError = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
                 render();
@@ -131,29 +305,73 @@
             showToast('ออกจากระบบสำเร็จ');
         };
 
-        const updateAttendance = (studentId, session, field, value) => {
+        const loadAllData = async () => {
+            await loadSystemSettings();
+            await loadStudents();
+            await loadAttendance();
+            await loadMedications();
+            await loadHealthData();
+        };
+
+        const updateAttendance = async (studentId, session, field, value) => {
             if (!app.attendance[studentId]) app.attendance[studentId] = {};
             if (!app.attendance[studentId][session]) app.attendance[studentId][session] = {};
             app.attendance[studentId][session][field] = value;
-            app.attendance[studentId][session].date = app.selectedDate;
-            app.attendance[studentId][session].timestamp = new Date().toISOString();
-            saveData();
+            
+            await saveAttendance(studentId, session, app.attendance[studentId][session]);
             render();
         };
 
-        const updateMedication = (studentId, med, taken) => {
+        const updateMedication = async (studentId, med, taken) => {
             if (!app.medications[studentId]) app.medications[studentId] = {};
             app.medications[studentId][med] = { taken, date: app.selectedDate, time: new Date().toLocaleTimeString('th-TH') };
-            saveData();
+            
+            await saveMedication(studentId, med, taken);
             render();
         };
 
-        const updateHealth = (studentId, field, value) => {
-            if (!app.healthData[studentId]) app.healthData[studentId] = {};
-            app.healthData[studentId][field] = value;
-            app.healthData[studentId].date = app.selectedDate;
-            app.healthData[studentId].timestamp = new Date().toISOString();
-            saveData();
+        const updateHealth = async (dorm, notes) => {
+            app.healthData[dorm] = {
+                notes,
+                timestamp: new Date().toISOString()
+            };
+            
+            await saveHealthData(dorm, notes);
+            showToast(`บันทึกข้อมูลของ ${dorm} สำเร็จ`);
+            render();
+        };
+
+        const addStudent = async () => {
+            if (!app.newStudent.code || !app.newStudent.name) {
+                showToast('กรุณากรอกรหัสและชื่อนักเรียน', 'error');
+                return;
+            }
+            
+            const newId = app.students.length > 0 ? Math.max(...app.students.map(s => s.id)) + 1 : 1;
+            const student = { ...app.newStudent, id: newId };
+            app.students.push(student);
+            
+            await saveStudents();
+            
+            app.newStudent = { code: '', name: '', nickname: '', disability: '', dorm: 'เรือนนอนพุทธรักษา', room: '', group: 'ตามตาราง' };
+            showToast('เพิ่มนักเรียนสำเร็จ');
+            render();
+        };
+
+        const deleteStudent = async (id) => {
+            if (!confirm('ต้องการลบนักเรียนคนนี้หรือไม่?')) return;
+            
+            app.students = app.students.filter(s => s.id !== id);
+            await saveStudents();
+            
+            // ลบข้อมูลที่เกี่ยวข้อง
+            try {
+                await db.collection('students').doc(id.toString()).delete();
+            } catch (error) {
+                console.error('Error deleting student:', error);
+            }
+            
+            showToast('ลบนักเรียนสำเร็จ');
             render();
         };
 
@@ -197,37 +415,25 @@
         };
 
         const getDailyStats = () => {
-            const dailyStats = {};
-            const date = app.selectedDate;
-            
-            app.students.forEach(student => {
-                const morning = app.attendance[student.id]?.morning || {};
-                const evening = app.attendance[student.id]?.evening || {};
-                
-                if (!dailyStats[date]) {
-                    dailyStats[date] = {
-                        morningReceived: 0,
-                        morningSent: 0,
-                        eveningReceived: 0,
-                        eveningSent: 0,
-                        total: 0
-                    };
-                }
-                
-                if (morning.received) dailyStats[date].morningReceived++;
-                if (morning.sent) dailyStats[date].morningSent++;
-                if (evening.received) dailyStats[date].eveningReceived++;
-                if (evening.sent) dailyStats[date].eveningSent++;
-                dailyStats[date].total++;
-            });
-            
-            return dailyStats[date] || {
+            const dailyStats = {
                 morningReceived: 0,
                 morningSent: 0,
                 eveningReceived: 0,
                 eveningSent: 0,
                 total: app.students.length
             };
+            
+            app.students.forEach(student => {
+                const morning = app.attendance[student.id]?.morning || {};
+                const evening = app.attendance[student.id]?.evening || {};
+                
+                if (morning.received) dailyStats.morningReceived++;
+                if (morning.sent) dailyStats.morningSent++;
+                if (evening.received) dailyStats.eveningReceived++;
+                if (evening.sent) dailyStats.eveningSent++;
+            });
+            
+            return dailyStats;
         };
 
         const getDailyStatsByDorm = () => {
@@ -274,6 +480,8 @@
             return new Intl.DateTimeFormat('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }).format(date);
         };
 
+        // ================== Render Functions ==================
+
         const renderAttendancePage = () => {
             const isDark = app.darkMode;
             const filtered = getFilteredStudents();
@@ -286,59 +494,66 @@
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance(); loadMedications(); loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
                             <select onchange="app.selectedDorm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg">
                                 ${app.dormitories.map(d => `<option ${app.selectedDorm === d ? 'selected' : ''}>${d}</option>`).join('')}
                             </select>
-                            <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" onchange="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <input type="text" placeholder="ค้นหา..." value="${app.searchTerm}" oninput="app.searchTerm = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
                         </div>
                     </div>
 
-                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} border-b-2">
-                                        <th class="px-3 py-3 text-left font-semibold">รหัส</th>
-                                        <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
-                                        <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
-                                        <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
-                                    </tr>
-                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
-                                        <th colspan="2"></th>
-                                        <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
-                                        <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
-                                        <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
-                                        <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
-                                    ${filtered.map(s => {
-                                        const morning = app.attendance[s.id]?.morning || {};
-                                        const evening = app.attendance[s.id]?.evening || {};
-                                        return `
-                                            <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
-                                                <td class="px-3 py-3">${s.code}</td>
-                                                <td class="px-3 py-3 font-medium">${s.name}</td>
-                                                <td class="px-3 py-3 text-center">
-                                                    <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'received', this.checked);" class="w-5 h-5 cursor-pointer" />
-                                                </td>
-                                                <td class="px-3 py-3 text-center">
-                                                    <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'sent', this.checked);" class="w-5 h-5 cursor-pointer" />
-                                                </td>
-                                                <td class="px-3 py-3 text-center">
-                                                    <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'received', this.checked);" class="w-5 h-5 cursor-pointer" />
-                                                </td>
-                                                <td class="px-3 py-3 text-center">
-                                                    <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'sent', this.checked);" class="w-5 h-5 cursor-pointer" />
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
+                    ${app.loadingData ? `
+                        <div class="text-center py-12">
+                            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                            <p class="${isDark ? 'text-gray-400' : 'text-gray-600'} mt-4">กำลังโหลดข้อมูล...</p>
                         </div>
-                    </div>
+                    ` : `
+                        <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-blue-50 to-blue-100'} border-b-2">
+                                            <th class="px-3 py-3 text-left font-semibold">รหัส</th>
+                                            <th class="px-3 py-3 text-left font-semibold">ชื่อ-สกุล</th>
+                                            <th colspan="2" class="px-3 py-3 text-center font-semibold bg-amber-500 text-white">เช้า</th>
+                                            <th colspan="2" class="px-3 py-3 text-center font-semibold bg-blue-500 text-white">เย็น</th>
+                                        </tr>
+                                        <tr class="${isDark ? 'bg-gray-700' : 'bg-gray-50'} border-b">
+                                            <th colspan="2"></th>
+                                            <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
+                                            <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
+                                            <th class="px-3 py-2 text-center text-xs">✓ รับ</th>
+                                            <th class="px-3 py-2 text-center text-xs">✓ ส่ง</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
+                                        ${filtered.map(s => {
+                                            const morning = app.attendance[s.id]?.morning || {};
+                                            const evening = app.attendance[s.id]?.evening || {};
+                                            return `
+                                                <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
+                                                    <td class="px-3 py-3">${s.code}</td>
+                                                    <td class="px-3 py-3 font-medium">${s.name}</td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <input type="checkbox" ${morning.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'received', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <input type="checkbox" ${morning.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'morning', 'sent', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <input type="checkbox" ${evening.received ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'received', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    </td>
+                                                    <td class="px-3 py-3 text-center">
+                                                        <input type="checkbox" ${evening.sent ? 'checked' : ''} onchange="updateAttendance(${s.id}, 'evening', 'sent', this.checked);" class="w-5 h-5 cursor-pointer" />
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `}
                 </div>
             `;
         };
@@ -350,7 +565,7 @@
                 <div class="space-y-6">
                     <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">💊 บันทึกการรับประทานยา</h2>
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full mb-4 px-4 py-2 border rounded-lg" />
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadMedications();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full mb-4 px-4 py-2 border rounded-lg" />
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
                                 <thead>
@@ -395,7 +610,7 @@
                     
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">เลือกวันที่</label>
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadHealthData();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
                     </div>
 
                     ${dormList.map((dorm, index) => {
@@ -405,7 +620,7 @@
                             <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-l-4 border-blue-500">
                                 <div class="flex justify-between items-start mb-4">
                                     <h3 class="${isDark ? 'text-white' : 'text-gray-900'} font-bold text-lg">🏘️ ${dorm} (${dormStudents.length} คน)</h3>
-                                    <button onclick="const notes = document.getElementById('health_textarea_${index}').value; app.healthData['${dorm}'] = { notes, timestamp: new Date().toISOString() }; saveData(); showToast('บันทึกข้อมูลของ ${dorm} สำเร็จ'); render();" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ บันทึก</button>
+                                    <button onclick="updateHealth('${dorm}', document.getElementById('health_textarea_${index}').value);" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ บันทึก</button>
                                 </div>
                                 <textarea 
                                     id="health_textarea_${index}"
@@ -436,7 +651,7 @@
                     
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-4">
                         <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-3">เลือกวันที่:</label>
-                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                        <input type="date" value="${app.selectedDate}" onchange="app.selectedDate = this.value; loadAttendance();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
                     </div>
 
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-purple-500">
@@ -503,31 +718,85 @@
                     <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6 border-t-4 border-green-500">
                         <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4 text-lg">🏘️ สรุปแยกเป็นเรือนนอน (${formatThaiDate(app.selectedDate)})</h3>
                         <div class="space-y-4">
-                            ${Object.entries(dormDailyStats).map(([dorm, stats]) => {
-                                return `
-                                    <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-green-50 to-green-100'} rounded-lg p-4 border-l-4 border-green-500">
-                                        <p class="${isDark ? 'text-white' : 'text-gray-900'} font-bold mb-3">${dorm} (รวม ${stats.total} คน)</p>
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                                            <div class="${isDark ? 'bg-green-600' : 'bg-green-200'} rounded p-3">
-                                                <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs">✓ มา</p>
-                                                <p class="${isDark ? 'text-white' : 'text-green-900'} text-2xl font-bold">${stats.present}</p>
-                                            </div>
-                                            <div class="${isDark ? 'bg-blue-600' : 'bg-blue-200'} rounded p-3">
-                                                <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs">✓ กลับบ้าน</p>
-                                                <p class="${isDark ? 'text-white' : 'text-blue-900'} text-2xl font-bold">${stats.returned}</p>
-                                            </div>
-                                            <div class="${isDark ? 'bg-yellow-600' : 'bg-yellow-200'} rounded p-3">
-                                                <p class="${isDark ? 'text-yellow-100' : 'text-yellow-700'} text-xs">✓ อยู่หอ</p>
-                                                <p class="${isDark ? 'text-white' : 'text-yellow-900'} text-2xl font-bold">${stats.leftInDorm}</p>
-                                            </div>
-                                            <div class="${isDark ? 'bg-red-600' : 'bg-red-200'} rounded p-3">
-                                                <p class="${isDark ? 'text-red-100' : 'text-red-700'} text-xs">✕ ไม่มา</p>
-                                                <p class="${isDark ? 'text-white' : 'text-red-900'} text-2xl font-bold">${stats.absent}</p>
-                                            </div>
+                            ${Object.entries(dormDailyStats).map(([dorm, stats]) => `
+                                <div class="${isDark ? 'bg-gray-700' : 'bg-gradient-to-r from-green-50 to-green-100'} rounded-lg p-4 border-l-4 border-green-500">
+                                    <p class="${isDark ? 'text-white' : 'text-gray-900'} font-bold mb-3">${dorm} (รวม ${stats.total} คน)</p>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                        <div class="${isDark ? 'bg-green-600' : 'bg-green-200'} rounded p-3">
+                                            <p class="${isDark ? 'text-green-100' : 'text-green-700'} text-xs">✓ มา</p>
+                                            <p class="${isDark ? 'text-white' : 'text-green-900'} text-2xl font-bold">${stats.present}</p>
+                                        </div>
+                                        <div class="${isDark ? 'bg-blue-600' : 'bg-blue-200'} rounded p-3">
+                                            <p class="${isDark ? 'text-blue-100' : 'text-blue-700'} text-xs">✓ กลับบ้าน</p>
+                                            <p class="${isDark ? 'text-white' : 'text-blue-900'} text-2xl font-bold">${stats.returned}</p>
+                                        </div>
+                                        <div class="${isDark ? 'bg-yellow-600' : 'bg-yellow-200'} rounded p-3">
+                                            <p class="${isDark ? 'text-yellow-100' : 'text-yellow-700'} text-xs">✓ อยู่หอ</p>
+                                            <p class="${isDark ? 'text-white' : 'text-yellow-900'} text-2xl font-bold">${stats.leftInDorm}</p>
+                                        </div>
+                                        <div class="${isDark ? 'bg-red-600' : 'bg-red-200'} rounded p-3">
+                                            <p class="${isDark ? 'text-red-100' : 'text-red-700'} text-xs">✕ ไม่มา</p>
+                                            <p class="${isDark ? 'text-white' : 'text-red-900'} text-2xl font-bold">${stats.absent}</p>
                                         </div>
                                     </div>
-                                `;
-                            }).join('')}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderStudentManagementPage = () => {
+            const isDark = app.darkMode;
+            return `
+                <div class="space-y-6">
+                    <h2 class="${isDark ? 'text-white' : 'text-gray-800'} text-lg font-bold">👥 จัดการนักเรียน</h2>
+                    
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">➕ เพิ่มนักเรียนใหม่</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="text" placeholder="รหัสนักเรียน *" value="${app.newStudent.code}" oninput="app.newStudent.code = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <input type="text" placeholder="ชื่อ-สกุล *" value="${app.newStudent.name}" oninput="app.newStudent.name = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <input type="text" placeholder="ชื่อเล่น" value="${app.newStudent.nickname}" oninput="app.newStudent.nickname = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <select onchange="app.newStudent.dorm = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg">
+                                ${app.dormitories.filter(d => d !== 'ทั้งหมด').map(d => `<option ${app.newStudent.dorm === d ? 'selected' : ''}>${d}</option>`).join('')}
+                            </select>
+                            <input type="text" placeholder="หมายเลขห้อง" value="${app.newStudent.room}" oninput="app.newStudent.room = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                            <input type="text" placeholder="ความพิการ (ถ้ามี)" value="${app.newStudent.disability}" oninput="app.newStudent.disability = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} px-4 py-2 border rounded-lg" />
+                        </div>
+                        <button onclick="addStudent();" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ เพิ่มนักเรียน</button>
+                    </div>
+
+                    <div class="${isDark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-6">
+                        <h3 class="${isDark ? 'text-white' : 'text-gray-800'} font-bold mb-4">📋 รายชื่อนักเรียนทั้งหมด (${app.students.length} คน)</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="${isDark ? 'bg-gray-700' : 'bg-blue-100'} border-b-2">
+                                        <th class="px-4 py-3 text-left font-semibold">รหัส</th>
+                                        <th class="px-4 py-3 text-left font-semibold">ชื่อ-สกุล</th>
+                                        <th class="px-4 py-3 text-left font-semibold">ชื่อเล่น</th>
+                                        <th class="px-4 py-3 text-left font-semibold">หอนอน</th>
+                                        <th class="px-4 py-3 text-left font-semibold">ห้อง</th>
+                                        <th class="px-4 py-3 text-center font-semibold">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="${isDark ? 'divide-gray-700' : 'divide-gray-200'} divide-y">
+                                    ${app.students.map(s => `
+                                        <tr class="${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}">
+                                            <td class="px-4 py-3">${s.code}</td>
+                                            <td class="px-4 py-3 font-medium">${s.name}</td>
+                                            <td class="px-4 py-3">${s.nickname}</td>
+                                            <td class="px-4 py-3">${s.dorm}</td>
+                                            <td class="px-4 py-3">${s.room}</td>
+                                            <td class="px-4 py-3 text-center">
+                                                <button onclick="deleteStudent(${s.id});" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs">🗑️ ลบ</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -545,12 +814,13 @@
                         <div class="space-y-4">
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อโรงเรียน</label>
-                                <input type="text" value="${app.systemSettings.schoolName}" onchange="app.systemSettings.schoolName = this.value; saveData(); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                <input type="text" value="${app.systemSettings.schoolName}" oninput="app.systemSettings.schoolName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
                             </div>
                             <div>
                                 <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อระบบ</label>
-                                <input type="text" value="${app.systemSettings.dormName}" onchange="app.systemSettings.dormName = this.value; saveData(); render();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
+                                <input type="text" value="${app.systemSettings.dormName}" oninput="app.systemSettings.dormName = this.value;" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-2 border rounded-lg" />
                             </div>
+                            <button onclick="saveSystemSettings();" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">✓ บันทึกการตั้งค่า</button>
                         </div>
                     </div>
 
@@ -561,6 +831,12 @@
                             <p><strong>ชื่อผู้ใช้:</strong> ${app.currentUser?.username}</p>
                             <p><strong>บทบาท:</strong> ${app.currentUser?.role === 'admin' ? '👨‍💼 ผู้จัดการระบบ' : '👨‍🏫 ครูประจำหอ'}</p>
                         </div>
+                    </div>
+
+                    <div class="${isDark ? 'bg-yellow-900' : 'bg-yellow-50'} border ${isDark ? 'border-yellow-700' : 'border-yellow-200'} rounded-xl p-6">
+                        <h3 class="${isDark ? 'text-yellow-200' : 'text-yellow-800'} font-bold mb-3">⚠️ ข้อมูล Firebase</h3>
+                        <p class="${isDark ? 'text-yellow-300' : 'text-yellow-700'} text-sm mb-2">ระบบกำลังใช้ Firebase Firestore เก็บข้อมูล</p>
+                        <p class="${isDark ? 'text-yellow-300' : 'text-yellow-700'} text-xs">Project ID: ${firebaseConfig.projectId}</p>
                     </div>
                 </div>
             `;
@@ -582,11 +858,11 @@
                             <div class="space-y-4">
                                 <div>
                                     <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">ชื่อผู้ใช้</label>
-                                    <input type="text" placeholder="admin หรือ teacher" value="${app.loginForm.username}" onchange="app.loginForm.username = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                                    <input type="text" placeholder="admin หรือ teacher" value="${app.loginForm.username}" oninput="app.loginForm.username = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
                                 </div>
                                 <div>
                                     <label class="${isDark ? 'text-gray-300' : 'text-gray-700'} block text-sm font-medium mb-2">รหัสผ่าน</label>
-                                    <input type="password" placeholder="••••••••" value="${app.loginForm.password}" onchange="app.loginForm.password = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
+                                    <input type="password" placeholder="••••••••" value="${app.loginForm.password}" oninput="app.loginForm.password = this.value;" onkeypress="if(event.key==='Enter') handleLogin();" class="${isDark ? 'bg-gray-700 text-white border-gray-600' : 'border-gray-300'} w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500" />
                                 </div>
                                 ${app.loginError ? `<div class="p-3 ${isDark ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'} border border-red-400 rounded-lg text-sm">${app.loginError}</div>` : ''}
                                 <button onclick="handleLogin();" class="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 font-bold transition-all">เข้าสู่ระบบ</button>
@@ -607,6 +883,7 @@
                 medication: renderMedicationPage(),
                 health: renderHealthCheckPage(),
                 statistics: renderStatisticsPage(),
+                students: renderStudentManagementPage(),
                 settings: renderSettingsPage()
             };
 
@@ -618,9 +895,16 @@
                             <p class="text-xs text-blue-200">${app.systemSettings.schoolName}</p>
                             <button onclick="app.sidebarOpen = false; render();" class="lg:hidden absolute top-6 right-6 hover:bg-blue-700 rounded p-1">✕</button>
                         </div>
-                        <nav class="mt-6 px-3 space-y-2">
-                            ${['attendance', 'medication', 'health', 'statistics', 'settings'].map(page => {
-                                const labels = { attendance: '✓ เช็คชื่อ', medication: '💊 บันทึกยา', health: '🌡️ สุขภาพ', statistics: '📊 สถิติ', settings: '⚙️ ตั้งค่า' };
+                        <nav class="mt-6 px-3 space-y-2 overflow-y-auto" style="max-height: calc(100vh - 250px);">
+                            ${['attendance', 'medication', 'health', 'statistics', 'students', 'settings'].map(page => {
+                                const labels = { 
+                                    attendance: '✓ เช็คชื่อ', 
+                                    medication: '💊 บันทึกยา', 
+                                    health: '🌡️ สุขภาพ', 
+                                    statistics: '📊 สถิติ',
+                                    students: '👥 จัดการนักเรียน',
+                                    settings: '⚙️ ตั้งค่า'
+                                };
                                 return `
                                     <button onclick="app.currentPage = '${page}'; app.sidebarOpen = false; render();" class="w-full text-left px-4 py-3 rounded-lg transition-colors ${app.currentPage === page ? 'bg-blue-700' : 'text-blue-100 hover:bg-blue-700/50'}">
                                         ${labels[page]}
@@ -666,9 +950,11 @@
             `;
         };
 
+        // Initial render
         if (app.darkMode) document.documentElement.classList.add('dark');
-        loadData();
+        render();
 
+        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && app.sidebarOpen) {
                 app.sidebarOpen = false;
